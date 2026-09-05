@@ -1,0 +1,8 @@
+schema_version: 1
+# xml2rfc's own registry (tebako-packages conventions: published at the
+# default-branch root; entries filled at first release — versions fill
+# per-triplet artifact names + sha256 + the release ref).
+payloads:
+- name: xml2rfc
+  kind: app
+  versions: []

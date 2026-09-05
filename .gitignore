@@ -1,0 +1,5 @@
+out/
+work/
+dist/
+.DS_Store
+/Gemfile.lock

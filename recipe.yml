@@ -1,0 +1,65 @@
+# Feedstock recipe for xml2rfc
+# spec 13 §9 + docs/conventions.md in tebako-packages/index
+name: "xml2rfc"
+kind: app
+summary: "xml2rfc — the IETF RFC/XML authoring renderer (python app; runtime-required payload)"
+
+upstream:
+  # PyPI closure, not a tarball: the dependency set is resolved from PyPI
+  # by tools/build (the pip analog of the metanorma feedstock's rubygems
+  # closure rule) and every wheel/sdist is sha256-verified before use.
+  # The locked closure with hashes is generated, never hand-authored:
+  # closure/<version>-<triplet>.txt (metanorma pattern).
+  pypi: "xml2rfc"
+  version: "3.34.0"          # PyPI-verified latest, 2026-09-05
+  source: "https://pypi.org"
+  # requires_python >= 3.10 (PyPI-verified 2026-09-05); upstream tests
+  # through 3.13. The MANIFEST's runtime edge is the ABI line (~> 3.13.0),
+  # not this range — the payload carries lxml/markupsafe C extensions, so
+  # spec 05 §5's native-extension law applies: wrong line = named error,
+  # never a segfault. This range documents the pure-language floor only.
+
+build:
+  system: pipstage         # stage a pip --target closure with a tebako runtime's own python
+  runtime:
+    engine: python
+    version: "3.13.15"     # the staging + exec runtime (tebako-runtime-python tidy line)
+    tebako: "2.2.0"        # product line whose link unit the runtime carries
+    # PRE-PUBLISH CHANNEL (tebako-runtime-python AGENTS.md: nothing
+    # publishes from the factory until TODO.python/03 proves the chain;
+    # the first publish is the owner's explicit act). The staging runtime
+    # and the CI test legs therefore resolve a same-day factory BUILD —
+    # publish.yml with publish=false uploads runtime-packages-<os>-<arch>-
+    # <py> run artifacts (retention-days: 1) — laid into a file://
+    # registry (spec 04 §2) by tools/stage_runtime. NEVER a hand-installed
+    # python. When the owner publishes, this block becomes a release pin
+    # and tools/stage_runtime's file:// path stays the offline test mode.
+    channel: run-artifacts   # run-artifacts (pre-publish) | release (post-publish)
+    factory_run: ""        # the publish.yml run id; filled per proof run
+  # The closure's native members (lxml — C extension, per-triplet wheels,
+  # musl = musllinux; markupsafe / pyyaml optional C speedups): staged
+  # from PyPI wheels matching the staging runtime's ABI tag (cp313) and
+  # the leg's triplet — the wheel-tag ↔ ABI-line/triplet mapping of
+  # TODO.python/04 item 1. Source builds of native members are NEVER a
+  # feedstock path (no compilation machinery for audiences 1-3).
+  native_members: ["lxml", "markupsafe", "pyyaml"]
+
+platforms:
+  # the tebako-runtime-python 02 matrix's POSIX legs (windows is
+  # TODO.python/05's descoped row — this feedstock gains the
+  # x86_64-windows-ucrt leg with 05, and the metanorma DEPENDS edge
+  # keeps windows on its current path until then)
+  - x86_64-linux-gnu
+  - aarch64-linux-gnu
+  - x86_64-linux-musl
+  - aarch64-linux-musl
+  - x86_64-macos
+  - aarch64-macos
+
+provides:
+  entrypoints:
+    - {name: "xml2rfc", path: "/bin/xml2rfc", version: "3.34.0"}
+  executables: []          # no host-tier executables: the console script
+                           # needs the interpreter (spec 32's spawn form)
+
+schema_version: 1

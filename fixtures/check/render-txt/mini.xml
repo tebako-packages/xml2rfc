@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- spec 26 render-txt check fixture: the tiniest valid RFCXML v3 document.
+     Validated against real xml2rfc at build time; if upstream's validator
+     demands more (seriesInfo etc.) the build leg fails closed and this
+     fixture is extended, never loosened. -->
+<rfc category="info" docName="draft-tebako-check-00" ipr="trust200902" version="3">
+  <front>
+    <title abbrev="Mini">Minimal Payload-Check Fixture</title>
+    <author fullname="Tebako CI" initials="T" surname="CI"/>
+    <date year="2026" month="September"/>
+  </front>
+  <middle>
+    <section title="Purpose">
+      <t>Renders to text inside the payload check. Nothing more.</t>
+    </section>
+  </middle>
+</rfc>
