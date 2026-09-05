@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+# tebako-packages/xml2rfc payload entrypoint (kind: app, runtime-required).
+#
+# The console-script form for the spec-32 spawn: the child dispatch runs
+# the provider runtime's exe with the payload image mounted and THIS file
+# as the spec-17 entry (the driver rewrites argv to
+# [python, <this file in the VFS>, <user args…>]; the shebang never
+# executes). The payload mounts at an arbitrary point (the dispatcher's
+# default is "/"), so the site-packages dir is derived from this file's
+# OWN location — File.dirname(__dir__)'s python reading — mirroring
+# tebako-packages/metanorma's templates/bin/metanorma GEM_HOME
+# mechanism. The runtime's env image supplies the stdlib + pip; the
+# payload supplies exactly the locked closure.
+#
+# POSIX only: the windows leg lands with TODO.python/05 (the drive
+# re-rooting dance of the ruby stubs has no python instance yet — do NOT
+# pre-author it).
+import os
+import sys
+
+# os.path.dirname stays lexical — no realpath/abspath re-rooting; the
+# driver hands the entry as an absolute VFS path already.
+_root = os.path.dirname(os.path.dirname(__file__))
+_site = os.path.join(_root, "lib", "python", "site-packages")
+if not os.path.isdir(_site):
+    # A named failure, never a silent import-fallback onto host packages.
+    sys.stderr.write(
+        "xml2rfc: payload site-packages missing at %s — the image layout "
+        "drifted from its entry stub\n" % _site
+    )
+    sys.exit(65)
+sys.path.insert(0, _site)
+
+# lxml/libxml2 file-path loads need the VFS compat layer BEFORE xml2rfc's
+# writers.base module-level schema parse runs (import time).
+import tebako_lxml_vfs  # noqa: E402
+
+tebako_lxml_vfs.install()
+
+from xml2rfc.run import main  # noqa: E402 — the path fix must precede it
+
+if __name__ == "__main__":
+    sys.exit(main())

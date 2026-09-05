@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# tools/boot_smoke <image.tfs> — the release gate (conventions.md):
+# assert the entrypoint exists in the image and the payload's spec-26
+# checks run green through the pinned tebako python runtime.
+#
+# Legs:
+#   1. in-process image assertions (the tfs CLI): the entrypoint stub,
+#      the site-packages tree, the embedded manifest, the check fixture.
+#   2. the spec-26 press-time gate: `tebako check <image> --runtime <exe>
+#      --runtime-image <env.tfs>` — the manifest's checks: block (version
+#      + render-txt) executed by the v2.2.0 engine; FAIL is the engine's
+#      named exit 79.
+#   3. the manual spec-17 dispatch smoke (the wire the spec-32 spawn
+#      composes): the runtime exe with the payload mounted bare at "/",
+#      TEBAKO_RUNTIME_IMAGE for the env image, --tebako-entry
+#      /bin/xml2rfc --version — proves the handoff independent of the
+#      check engine.
+#
+# Env: TFS (tfs CLI), TEBAKO (tebako CLI), RUNTIME (the runtime exe),
+#      RUNTIME_IMAGE (the env .tfs) — tools/build writes all four into
+#      out/<triplet>/runtime.env (absolute spellings; the check driver
+#      runs with cwd = its scratch dir).
+set -euo pipefail
+
+IMG="${1:?usage: tools/boot_smoke <image.tfs>}"
+TFS="${TFS:-tfs}"
+TEBAKO="${TEBAKO:-tebako}"
+RUNTIME="${RUNTIME:?set RUNTIME to the tebako runtime exe (tools/build writes out/<triplet>/runtime.env)}"
+RUNTIME_IMAGE="${RUNTIME_IMAGE:?set RUNTIME_IMAGE to the runtime env .tfs}"
+
+FEEDSTOCK="$(cd "$(dirname "$0")/.." && pwd)"
+recipe() { ruby -ryaml -e "puts(YAML.load_file('$FEEDSTOCK/recipe.yml').dig(*ARGV) || '')" "$@"; }
+PKG_V="${PKG_V:-$(recipe upstream version)}"
+
+echo "== entrypoint assertions (in-process mount via the tfs CLI)"
+"$TFS" stat "$IMG" /bin/xml2rfc | grep -q File
+"$TFS" stat "$IMG" /__tpkg__/manifest.yaml | grep -q File
+"$TFS" stat "$IMG" /__tpkg__/check/render-txt/mini.xml | grep -q File
+"$TFS" ls "$IMG" /lib/python/site-packages | grep -q "xml2rfc-$PKG_V.dist-info"
+echo "   /bin/xml2rfc, manifest, check fixture, site-packages: present"
+
+echo "== extract round-trip"
+X="$(mktemp -d)"
+"$TFS" extract -d "$X" "$IMG"
+[ -f "$X/bin/xml2rfc" ] || { echo "extracted entrypoint missing"; exit 1; }
+
+echo "== spec 26 payload checks (tebako check, the press-time moment)"
+"$TEBAKO" check "$IMG" --runtime "$RUNTIME" --runtime-image "$RUNTIME_IMAGE"
+
+echo "== manual spec-17 dispatch smoke (the spec-32 spawn wire)"
+out="$(TEBAKO_RUNTIME_IMAGE="$RUNTIME_IMAGE" \
+  "$RUNTIME" "--tebako-image=$IMG:-:/" "--tebako-entry=/bin/xml2rfc" --version)"
+echo "$out" | grep -q "$PKG_V" || { echo "version smoke: $PKG_V absent from: $out"; exit 1; }
+echo "   xml2rfc --version: $out"
+
+echo "BOOT-SMOKE-OK"

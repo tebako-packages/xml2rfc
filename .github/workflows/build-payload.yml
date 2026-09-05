@@ -1,0 +1,297 @@
+name: build-payload
+# Feedstock build: recipe → per-triplet legs → boot-smoke + spec-26 checks
+# → release. Conventions: docs/conventions.md in tebako-packages/index.
+#
+# The first python payload (kind: app on the tebako-runtime-python
+# 3.13.15 line). Six POSIX legs (windows lands with TODO.python/05).
+#
+# Leg grammar (the runtime factory's _build-platform.yml): the linux legs
+# run on the ubuntu host; the musl legs docker-run the pinned
+# tpkg-builder image per triplet-matched step (the musl image is
+# alpine-based and node actions cannot run on musl — the job-level
+# container: form is out); the gnu legs are host-native (this feedstock
+# compiles nothing — pipstage fetches wheels). macos legs runner-native.
+#
+# Runtime staging (README decision 4): PRE-PUBLISH the factory publishes
+# nothing, so each leg stages its platform's runtime package from the
+# pinned factory RUN's artifacts into a file:// mirror
+# (tools/stage_runtime, run-artifacts channel; GH_TOKEN needs
+# actions:read on tamatebako/tebako-runtime-python — the org PAT). The
+# owner's publish decision flips recipe.yml build.runtime.channel to
+# `release` and stage_runtime's release channel takes over.
+#
+# Release: NEVER automatic (the ecosystem hard rule — nothing merges or
+# publishes until the whole change chain is proven). Push/PR/tag runs
+# build + gate only. Publishing is the owner's explicit act: dispatch
+# this workflow ON THE TAG with publish=true.
+
+on:
+  push:
+    branches: [main]
+    tags: ["*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish this run''s payloads to the tag release + registry PR (owner-only act; requires running on a tag ref)'
+        type: boolean
+        default: false
+
+# One run per branch/PR-head at a time (push + pull_request would
+# otherwise double-run); a new run cancels the stale one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  plan:
+    name: Compute the leg matrix
+    runs-on: ubuntu-latest
+    outputs:
+      legs: ${{ steps.emit.outputs.legs }}
+      leg_count: ${{ steps.emit.outputs.leg_count }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: emit
+        run: |
+          set -euo pipefail
+          legs=$(ruby tools/pins.rb --matrix)
+          count=$(ruby -rjson -e 'puts JSON.parse(STDIN.read)["include"].length' <<< "$legs")
+          { echo "legs=$legs"; echo "leg_count=$count"; } >> "$GITHUB_OUTPUT"
+          echo "plan: $count legs"
+          ruby -rjson -e 'JSON.parse(STDIN.read)["include"].each { |l| puts "  #{l["triplet"]} on #{l["host"]}" }' <<< "$legs"
+
+  build:
+    name: ${{ matrix.triplet }}
+    needs: plan
+    # An unguarded empty matrix poisons the run conclusion.
+    if: needs.plan.outputs.leg_count != '0'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.legs) }}
+    runs-on: ${{ matrix.host }}
+    env:
+      TRIPLET: ${{ matrix.triplet }}
+      CONTAINER: ${{ matrix.container }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read the toolchain pins (recipe.yml is the SSOT)
+        run: ruby tools/pins.rb ${{ matrix.tool_platform }} --env >> "$GITHUB_ENV"
+
+      - name: Fetch tebako CLI tools (pinned by recipe.yml, sha256-verified)
+        # tebako + tfs (the imager is `tfs mkimage` — README decision 4's
+        # deviation note); tebako-pkg/tebako-shim stay pinned for the
+        # future press but are not leg inputs. The pins are cross-checked
+        # against the release's own SHA256SUMS (both anchored). For the
+        # musl legs these are the MUSL tool binaries — they execute
+        # inside the container, so they land in the bind-mounted
+        # workspace (.tools/), not on the host's PATH.
+        run: |
+          set -euo pipefail
+          mkdir -p .tools && cd .tools
+          base="https://github.com/tamatebako/tebako/releases/download/$TEBAKO_RELEASE"
+          curl -sLO "$base/$TEBAKO_ASSET"
+          curl -sLO "$base/$TFS_ASSET"
+          curl -sLO "$base/SHA256SUMS"
+          echo "$TEBAKO_SHA256  $TEBAKO_ASSET" > SHA256PINS
+          echo "$TFS_SHA256  $TFS_ASSET" >> SHA256PINS
+          if command -v sha256sum >/dev/null 2>&1; then sha256sum -c SHA256PINS; else shasum -a 256 -c SHA256PINS; fi
+          for pair in "$TEBAKO_ASSET:$TEBAKO_SHA256" "$TFS_ASSET:$TFS_SHA256"; do
+            asset="${pair%%:*}"; want="${pair##*:}"
+            got=$(awk -v a="$asset" '$2 == a {print $1}' SHA256SUMS)
+            [ "$got" = "$want" ] || { echo "::error::pin mismatch for $asset: recipe.yml=$want release=${got:-ABSENT}"; exit 1; }
+          done
+          chmod 755 "$TEBAKO_ASSET" "$TFS_ASSET"
+          mv "$TEBAKO_ASSET" tebako
+          mv "$TFS_ASSET" tfs
+
+      - name: Stage the pinned python runtime (file:// mirror, run-artifacts channel)
+        # gh needs actions:read on the FACTORY repo — the org PAT, not the
+        # run's GITHUB_TOKEN. Stages only THIS leg's platform package
+        # (HOST_IDS filter) into out/runtime-mirror.
+        env:
+          GH_TOKEN: ${{ secrets.TEBAKO_CI_PAT_TOKEN || secrets.GITHUB_TOKEN }}
+        run: HOST_IDS="${{ matrix.tool_platform }}" tools/stage_runtime
+
+      - name: Generate the closure (host-native legs; only when the committed lock is absent)
+        # The committed closure/<version>-<triplet>.txt is the build input.
+        # A leg regenerates in-leg when its lock is missing (the generator
+        # is the staged runtime's own pip — never the runner's python);
+        # maintainers commit the locks before a release tag.
+        if: matrix.container == ''
+        run: |
+          set -euo pipefail
+          lock="closure/$PKG_VERSION-$TRIPLET.txt"
+          if [ -s "$lock" ]; then
+            echo "committed closure present: $lock"
+          else
+            tools/gen_closure
+          fi
+
+      - name: Generate the closure (container legs; only when the committed lock is absent)
+        if: matrix.container != ''
+        run: |
+          set -euo pipefail
+          lock="closure/$PKG_VERSION-$TRIPLET.txt"
+          if [ -s "$lock" ]; then
+            echo "committed closure present: $lock"
+          else
+            docker run --rm -e TRIPLET -v "$GITHUB_WORKSPACE:/mnt/w" -w /mnt/w \
+              "$CONTAINER" bash -c '
+                set -e
+                tools/gen_closure
+                uid=$(stat -c %u /mnt/w/recipe.yml); gid=$(stat -c %g /mnt/w/recipe.yml)
+                chown -R "$uid:$gid" /mnt/w/closure /mnt/w/out 2>/dev/null || true'
+          fi
+
+      - name: Build the payload (host-native legs)
+        if: matrix.container == ''
+        env:
+          TFS_CLI: ${{ github.workspace }}/.tools/tfs
+        run: tools/build
+
+      - name: Build the payload (container legs)
+        if: matrix.container != ''
+        run: |
+          set -euo pipefail
+          docker run --rm -e TRIPLET -v "$GITHUB_WORKSPACE:/mnt/w" -w /mnt/w \
+            "$CONTAINER" bash -c '
+              set -e
+              TFS_CLI=/mnt/w/.tools/tfs tools/build
+              # Root in the container writes root-owned files onto the
+              # bind mount; hand them back to the runner user so the host
+              # steps (artifact upload) can read them.
+              uid=$(stat -c %u /mnt/w/recipe.yml); gid=$(stat -c %g /mnt/w/recipe.yml)
+              chown -R "$uid:$gid" /mnt/w/out 2>/dev/null || true'
+
+      - name: Boot-smoke + payload checks (host-native legs)
+        # tools/boot_smoke = tfs in-image assertions + extract round-trip
+        # + `tebako check` (the spec-26 press-time gate; FAIL is the
+        # engine's named exit 79) + the manual spec-17 dispatch smoke.
+        if: matrix.container == ''
+        run: |
+          set -euo pipefail
+          set -a
+          # shellcheck disable=SC1090  # the leg's runtime.env is written by tools/build
+          . "out/$TRIPLET/runtime.env"
+          set +a
+          TFS="$GITHUB_WORKSPACE/.tools/tfs" TEBAKO="$GITHUB_WORKSPACE/.tools/tebako" \
+            bash tools/boot_smoke "$PAYLOAD_IMG"
+
+      - name: Boot-smoke + payload checks (container legs)
+        if: matrix.container != ''
+        run: |
+          set -euo pipefail
+          docker run --rm -e TRIPLET -v "$GITHUB_WORKSPACE:/mnt/w" -w /mnt/w \
+            "$CONTAINER" bash -c '
+              set -e
+              set -a; . "out/$TRIPLET/runtime.env"; set +a
+              TFS=/mnt/w/.tools/tfs TEBAKO=/mnt/w/.tools/tebako \
+                bash tools/boot_smoke "$PAYLOAD_IMG"
+              uid=$(stat -c %u /mnt/w/recipe.yml); gid=$(stat -c %g /mnt/w/recipe.yml)
+              chown -R "$uid:$gid" /mnt/w/out 2>/dev/null || true'
+
+      - name: Stage artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-${{ matrix.triplet }}
+          path: out/${{ matrix.triplet }}/
+
+  release:
+    name: publish
+    needs: [plan, build]
+    runs-on: macos-14
+    # The owner's explicit act ONLY (the ecosystem hard rule): a dispatch
+    # with publish=true on a tag ref. Push/tag/PR runs never publish.
+    if: ${{ always() && !cancelled() && inputs.publish && needs.build.result == 'success' && startsWith(github.ref, 'refs/tags/') }}
+    env:
+      TEBAKO_CLI: ${{ github.workspace }}/.packager/tebako
+      TEBAKO_HOME: ${{ github.workspace }}/.tebako
+      TEBAKO_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: dist-*
+          path: out
+          merge-multiple: false
+      - name: Restore layout
+        # each dist-<triplet> artifact carries the leg's out/<triplet>/
+        # contents; put them back at out/<triplet>/ for the publish below
+        run: |
+          set -e
+          for d in out/dist-*/; do
+            p="${d#out/dist-}"; p="${p%/}"
+            mkdir -p "out/$p"
+            mv "$d"* "out/$p/"
+            rmdir "$d"
+          done
+      - name: Read the toolchain pins (recipe.yml is the SSOT)
+        run: ruby tools/pins.rb macos-arm64 --env >> "$GITHUB_ENV"
+      - name: Fetch the publisher (pinned by recipe.yml, sha256-verified)
+        run: |
+          set -euo pipefail
+          mkdir -p .packager
+          curl -sL --fail -o .packager/tebako \
+            "https://github.com/tamatebako/tebako/releases/download/$TEBAKO_RELEASE/$TEBAKO_ASSET"
+          curl -sL --fail -o .packager/tebako-shim \
+            "https://github.com/tamatebako/tebako/releases/download/$TEBAKO_RELEASE/$SHIM_ASSET"
+          echo "$TEBAKO_SHA256  .packager/tebako" | shasum -a 256 -c -
+          echo "$SHIM_SHA256  .packager/tebako-shim" | shasum -a 256 -c -
+          chmod +x .packager/tebako .packager/tebako-shim
+          .packager/tebako --help > /dev/null
+      - name: Stage the runtime mirror for the publish verify
+        # tebako publish's clean-cache verify installs the payload and
+        # resolves its python runtime edge; the runtime line is
+        # PRE-PUBLISH, so the verify rides the same run-artifacts mirror
+        # + config pin as the dispatch proof (README decision 4). Scoped
+        # to THIS job: the mirror env is set at the step, the config pin
+        # in this job's TEBAKO_HOME.
+        env:
+          GH_TOKEN: ${{ secrets.TEBAKO_CI_PAT_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          HOST_IDS=macos-arm64 tools/stage_runtime
+          printf 'runtimes:\n  python:\n    version: "%s"\n    tebako: "%s"\n' \
+            "$RUNTIME_PYTHON" "$RUNTIME_TEBAKO" >> "$TEBAKO_HOME/config.yaml"
+      - name: Publish payloads + registry
+        env:
+          TEBAKO_RUNTIME_MIRROR: file://${{ github.workspace }}/out/runtime-mirror
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2046  # --payload-args MUST word-split into six --payload pairs
+          "$TEBAKO_CLI" publish --name "$PKG_NAME" \
+            --release "tfs:github:tebako-packages/xml2rfc:${{ github.ref_name }}" \
+            $(ruby tools/pins.rb --payload-args) \
+            --registry-out "$PWD/tpkg-registry.yaml"
+      # main is branch-protected: the registry lands by bot PR +
+      # auto-merge, never by direct push (the metanorma pattern).
+      # Idempotent across re-runs of the same tag.
+      - name: Publish the registry entry via pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "tebako-ci"
+          git config user.email "tebako@ribose.com"
+          git fetch origin main
+          if git diff --quiet origin/main -- tpkg-registry.yaml; then
+            echo "registry unchanged (or the entry already landed on main)"
+            exit 0
+          fi
+          branch="publish/${{ github.ref_name }}-registry"
+          git checkout -b "$branch"
+          git add tpkg-registry.yaml
+          git commit -m "publish ${{ github.ref_name }}: registry entry (the POSIX six)"
+          git push origin "$branch"
+          if ! gh pr view "$branch" >/dev/null 2>&1; then
+            gh pr create --base main --head "$branch" \
+              --title "publish ${{ github.ref_name }}: registry entry" \
+              --body "Automated registry entry for ${{ github.ref_name }} (the build-payload publish job; main is protected, so the registry lands by PR)."
+          fi
+          gh pr merge --auto --squash "$branch" || gh pr merge --squash "$branch"

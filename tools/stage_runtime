@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# tools/stage_runtime — stage the pinned tebako python runtime into a
+# local file:// runtime MIRROR (spec 05 §2's download-base shape:
+# <mirror>/v<tebako>/manifest.json + SHA256SUMS.txt + the exe/image
+# assets), ready for TEBAKO_RUNTIME_MIRROR=file://<mirror> and the
+# store's `runtimes: {python: …}` pin.
+#
+# Channels (README decision 4 — ONE variable, recipe.yml
+# build.runtime.channel):
+#   run-artifacts  (pre-publish) — `gh run download` the factory's
+#                  publish.yml (publish=false) runtime-packages-*
+#                  artifacts of the pinned run, verify each .tfs against
+#                  its shipped .sha256 sidecar, and DERIVE the release
+#                  index from the packages' own sidecars (.contract.yaml
+#                  + .abi — the same fields scripts/upload_release.rb
+#                  folds into a published manifest entry).
+#   release        (post-publish; the owner's decision flips it) —
+#                  fetch the factory release's assets + manifest.json +
+#                  SHA256SUMS.txt, sha256-verified.
+#
+# Workflow run artifacts are NOT a durable registry (retention-days: 1):
+# the mirror they produce is a LOCAL staging product (out/, gitignored);
+# no release line ever references a run artifact.
+#
+# Inputs (env, defaults from recipe.yml — the SSOT; this script carries
+# no version literals):
+#   CHANNEL        run-artifacts | release   (recipe build.runtime.channel)
+#   FACTORY_RUN    the publish.yml run id    (recipe build.runtime.factory_run;
+#                                             required on the run-artifacts channel)
+#   FACTORY_REPO   tamatebako/tebako-runtime-python (fixed — the one factory)
+#   RELEASE_TAG    the factory release tag   (release channel only)
+#   MIRROR         output mirror dir (default: out/runtime-mirror)
+#   RUN_DL         run-artifact download dir (default: out/run-artifacts)
+#
+# Named errors everywhere; every byte that enters the mirror is hashed.
+set -euo pipefail
+
+FEEDSTOCK="$(cd "$(dirname "$0")/.." && pwd)"
+recipe() { ruby -ryaml -e "puts(YAML.load_file('$FEEDSTOCK/recipe.yml').dig(*ARGV) || '')" "$@"; }
+
+PY_V="${PY_V:-$(recipe build runtime version)}"
+RT_TEBAKO="${RT_TEBAKO:-$(recipe build runtime tebako)}"
+CHANNEL="${CHANNEL:-$(recipe build runtime channel)}"
+FACTORY_RUN="${FACTORY_RUN:-$(recipe build runtime factory_run)}"
+FACTORY_REPO="${FACTORY_REPO:-tamatebako/tebako-runtime-python}"
+MIRROR="${MIRROR:-$FEEDSTOCK/out/runtime-mirror}"
+RUN_DL="${RUN_DL:-$FEEDSTOCK/out/run-artifacts}"
+
+step() { printf '\n== %s\n' "$*"; }
+die() { echo "stage_runtime: $*" >&2; exit 1; }
+
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  else
+    shasum -a 256 "$1" | cut -d' ' -f1
+  fi
+}
+
+# The POSIX six (recipe.yml platforms; windows lands with TODO.python/05).
+# <artifact os-arch> == the factory's host_id (Platform::HOST_IDS) on all
+# six POSIX legs — asserted, never assumed. HOST_IDS is overridable: a CI
+# leg stages only its own platform's package.
+HOST_IDS="${HOST_IDS:-linux-gnu-x86_64 linux-gnu-arm64 linux-musl-x86_64 linux-musl-arm64 macos-x86_64 macos-arm64}"
+
+case "$CHANNEL" in
+  run-artifacts)
+    [ -n "$FACTORY_RUN" ] || die "no factory run pinned (recipe.yml build.runtime.factory_run)"
+    step "download run artifacts of $FACTORY_REPO run $FACTORY_RUN (python $PY_V)"
+    mkdir -p "$RUN_DL"
+    for host_id in $HOST_IDS; do
+      art="runtime-packages-$host_id-$PY_V"
+      if [ ! -d "$RUN_DL/$art" ]; then
+        gh run download "$FACTORY_RUN" --repo "$FACTORY_REPO" --name "$art" --dir "$RUN_DL/$art" \
+          || die "run-artifact download failed: $art (run $FACTORY_RUN — artifacts expire 1 day after the run)"
+      fi
+    done
+    PKG_DIRS=""
+    for host_id in $HOST_IDS; do
+      PKG_DIRS="$PKG_DIRS $RUN_DL/runtime-packages-$host_id-$PY_V"
+    done
+    ;;
+  release)
+    die "the release channel activates at the owner's publish decision — the factory publishes nothing yet (README decision 4)"
+    ;;
+  *) die "unknown channel: $CHANNEL (run-artifacts | release)" ;;
+esac
+
+step "assemble the mirror at $MIRROR/v$RT_TEBAKO"
+DEST="$MIRROR/v$RT_TEBAKO"
+rm -rf "$DEST"
+mkdir -p "$DEST"
+
+# Per package: exe + env image + .tfs.sha256 + .abi + .contract.yaml.
+# The image rides its SHIPPED sidecar (verified here); the exe's sha256
+# run artifacts do not carry is computed over the downloaded bytes and
+# enters the derived index (the install path re-verifies against it —
+# tmp+rename, a mismatch never enters the store).
+entries=""
+: > "$DEST/SHA256SUMS.txt"
+for host_id in $HOST_IDS; do
+  case "$CHANNEL" in
+    run-artifacts) dir="$RUN_DL/runtime-packages-$host_id-$PY_V" ;;
+  esac
+  exe="tebako-runtime-$RT_TEBAKO-$PY_V-$host_id"
+  img="$exe.tfs"
+  for f in "$exe" "$img" "$img.sha256" "$exe.abi" "$exe.contract.yaml"; do
+    [ -f "$dir/$f" ] || die "incomplete runtime package $host_id: missing $f"
+  done
+  # Verify the image against its shipped sidecar BEFORE mirroring.
+  want="$(cut -d' ' -f1 < "$dir/$img.sha256")"
+  got="$(sha256_file "$dir/$img")"
+  [ "$got" = "$want" ] || die "SHA256 MISMATCH $img: $got != $want (shipped sidecar)"
+  # The package's own naming is asserted against the host_id grammar —
+  # a factory rename fails here loudly instead of mis-laying the mirror.
+  [ -f "$dir/$exe" ] || die "exe $exe absent from runtime-packages-$host_id-$PY_V"
+
+  exe_sha="$(sha256_file "$dir/$exe")"
+  exe_size="$(stat -f%z "$dir/$exe" 2>/dev/null || stat -c%s "$dir/$exe")"
+  img_size="$(stat -f%z "$dir/$img" 2>/dev/null || stat -c%s "$dir/$img")"
+  abi="$(tr -d '[:space:]' < "$dir/$exe.abi")"
+  [ -n "$abi" ] || die "empty abi sidecar for $exe"
+
+  cp "$dir/$exe" "$dir/$img" "$dir/$exe.abi" "$dir/$exe.contract.yaml" "$DEST/"
+  chmod 444 "$DEST/$img"
+  printf '%s  %s\n%s  %s\n' "$exe_sha" "$exe" "$got" "$img" >> "$DEST/SHA256SUMS.txt"
+
+  # The manifest entry (the shape scripts/upload_release.rb emits):
+  # identity triple + filename/sha256/size_bytes + the contract card
+  # (contract_era + mount_root from the package's own .contract.yaml;
+  # contract_version from the factory's contract.yml — era-2 python
+  # runtimes are contract 2 from the first publish, floored by the
+  # factory's schema) + the abi facet + the image facet.
+  entry="$(ruby -ryaml -rjson -e '
+    contract = YAML.load_file(ARGV[0])
+    puts JSON.generate({
+      tebako_version: ARGV[1],
+      contract_era: contract.fetch("contract_era"),
+      contract_version: 2,
+      python_version: ARGV[2],
+      platform: ARGV[3],
+      filename: ARGV[4],
+      sha256: ARGV[5],
+      size_bytes: ARGV[6].to_i,
+      mount_root: contract.fetch("mount_root"),
+      image_layout: contract.fetch("image_layout"),
+      built_from: contract.fetch("built_from"),
+      abi: ARGV[7],
+      image: { filename: ARGV[8], sha256: ARGV[9], size_bytes: ARGV[10].to_i }
+    })
+  ' "$dir/$exe.contract.yaml" "$RT_TEBAKO" "$PY_V" "$host_id" "$exe" "$exe_sha" "$exe_size" "$abi" "$img" "$got" "$img_size")"
+  entries="$entries$entry
+"
+  echo "  $host_id: exe $exe_sha"
+done
+
+# Assemble the monolithic index with ruby (valid JSON, one entry per package).
+printf '%s' "$entries" | ruby -rjson -e '
+  docs = STDIN.read.split("\n").reject(&:empty?).map { |l| JSON.parse(l) }
+  puts JSON.pretty_generate(docs)
+' > "$DEST/manifest.json"
+ruby -rjson -e 'JSON.parse(File.read(ARGV[0]))' "$DEST/manifest.json" \
+  || die "derived manifest.json is not valid JSON"
+echo "  index: $DEST/manifest.json ($(ruby -rjson -e 'puts JSON.parse(File.read(ARGV[0])).length' "$DEST/manifest.json") entries)"
+
+cat > "$MIRROR/stage.env" <<EOF
+# written by tools/stage_runtime ($CHANNEL channel, factory run ${FACTORY_RUN:-n/a})
+TEBAKO_RUNTIME_MIRROR=file://$MIRROR
+RUNTIME_EXE=$DEST/tebako-runtime-$RT_TEBAKO-$PY_V-\$HOST_ID
+RUNTIME_IMAGE=$DEST/tebako-runtime-$RT_TEBAKO-$PY_V-\$HOST_ID.tfs
+EOF
+
+step "staged: python $PY_V runtime (tebako $RT_TEBAKO), $CHANNEL channel"
+echo "mirror:  $MIRROR"
+echo "use:     export TEBAKO_RUNTIME_MIRROR=file://$MIRROR"
+echo "         config.yaml runtimes: {python: {version: \"$PY_V\", tebako: \"$RT_TEBAKO\"}}"

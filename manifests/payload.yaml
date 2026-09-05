@@ -30,17 +30,21 @@ provides:
         # staged per triplet): the ABI line of the staging runtime, per
         # spec 05 §5 — the version line (constraint) AND the platform
         # line (abi, filled by tools/build from the staging runtime's
-        # wheel platform tag ↔ triplet mapping, TODO.python/04 item 1).
+        # OWN .abi sidecar — the factory is the single owner;
+        # TODO.python/04 item 1).
         constraint: "~> 3.13.0"
         abi: "@@ABI@@"
-exec_tier: tfs-native       # the interpreter carries the driver; the
-                            # payload itself is image-resident data + code
-exec_closure: []
-platforms: @@PLATFORMS@@    # filled by tools/stage from recipe.yml
-capabilities: {exec: true, read: true}
-requires: []                # the runtime edge rides each entrypoint's
-                            # runtime_requirement (spec 03 §8); no toolkit
-                            # or payload DEPENDS
+  platforms: []                   # filled by tools/build from recipe.yml (the
+                                  # leg's triplet; the template stays parseable)
+  capabilities: {exec: true, read: true}
+requires:
+  # The provider's kind: language edge (spec 03 §8): the spec-32 §6
+  # press cross-check mirrors the consumer lock's nested runtime row
+  # against THIS edge — a provider without it fails that cross-check.
+  # The abi-line half rides each entrypoint's runtime_requirement.
+  - kind: language
+    engine: python
+    constraint: "~> 3.13.0"
 # spec 26 payload checks — the payload carries its own compile test.
 checks:
   version:

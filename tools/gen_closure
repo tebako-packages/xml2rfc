@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+# tools/gen_closure — generate the locked PyPI closure
+# closure/<version>-<triplet>.txt (metanorma's gen_closure pattern,
+# pip-stage form): per-artifact wheel filenames + sha256.
+#
+# The resolver is the STAGED tebako python runtime's OWN pip (dogfood —
+# never the runner's python, never a hand-installed one): pip download
+# with the leg's platform tags resolves the transitive closure against
+# PyPI and downloads exactly the wheels a cp313 interpreter on that
+# triplet can install. Every artifact is then hashed into the lock.
+#
+# Native members (recipe.yml build.native_members: lxml, markupsafe,
+# pyyaml) must come down as WHEELS whose platform tag matches the leg
+# (manylinux for linux-gnu, musllinux for linux-musl, macosx_* for
+# macos). Source builds of native members are NEVER a feedstock path
+# (audience law 1–3): --only-binary=:all: makes an sdist-only member a
+# pip resolution failure, and this tool then fails closed with a named
+# error listing what PyPI actually offers for that member.
+#
+# Manual maintainer step (or CI leg, when the committed closure is
+# absent/stale); the committed closure file is the build input.
+#
+# Usage:
+#   TRIPLET=aarch64-macos tools/gen_closure            # one leg
+#   tools/gen_closure --all                            # every recipe platform
+#                                                       # (needs every staged runtime — CI shape)
+# Env: MIRROR (tools/stage_runtime's output), VERSION, RUN_DL… —
+# defaults flow from recipe.yml.
+set -euo pipefail
+
+FEEDSTOCK="$(cd "$(dirname "$0")/.." && pwd)"
+recipe() { ruby -ryaml -e "puts(YAML.load_file('$FEEDSTOCK/recipe.yml').dig(*ARGV) || '')" "$@"; }
+
+VERSION="${VERSION:-$(recipe upstream version)}"
+PY_V="${PY_V:-$(recipe build runtime version)}"
+RT_TEBAKO="${RT_TEBAKO:-$(recipe build runtime tebako)}"
+MIRROR="${MIRROR:-$FEEDSTOCK/out/runtime-mirror}"
+
+step() { printf '\n== %s\n' "$*"; }
+die() { echo "gen_closure: $*" >&2; exit 1; }
+
+# triplet -> host_id (the factory's Platform::HOST_IDS; the runtime
+# package names ride it) — asserted, never derived by formula elsewhere.
+host_id_of() {
+  case "$1" in
+    x86_64-linux-gnu)  echo linux-gnu-x86_64 ;;
+    aarch64-linux-gnu) echo linux-gnu-arm64 ;;
+    x86_64-linux-musl) echo linux-musl-x86_64 ;;
+    aarch64-linux-musl) echo linux-musl-arm64 ;;
+    x86_64-macos)      echo macos-x86_64 ;;
+    aarch64-macos)     echo macos-arm64 ;;
+    *) die "unknown TRIPLET: $1" ;;
+  esac
+}
+
+# triplet -> the wheel platform tags pip accepts for the leg. pip takes
+# --platform strings LITERALLY (no manylinux/macOS expansion), so the
+# list spans every tag revision PyPI members publish. Newest-first is
+# irrelevant — the set is an accept-list.
+platform_tags() {
+  case "$1" in
+    x86_64-linux-gnu)
+      echo "manylinux_2_40_x86_64 manylinux_2_39_x86_64 manylinux_2_36_x86_64 manylinux_2_35_x86_64 manylinux_2_34_x86_64 manylinux_2_31_x86_64 manylinux_2_28_x86_64 manylinux_2_27_x86_64 manylinux_2_26_x86_64 manylinux_2_24_x86_64 manylinux_2_17_x86_64 manylinux2014_x86_64 manylinux_2_12_x86_64 manylinux2010_x86_64 manylinux_2_5_x86_64 manylinux1_x86_64 linux_x86_64" ;;
+    aarch64-linux-gnu)
+      echo "manylinux_2_40_aarch64 manylinux_2_39_aarch64 manylinux_2_36_aarch64 manylinux_2_35_aarch64 manylinux_2_34_aarch64 manylinux_2_31_aarch64 manylinux_2_28_aarch64 manylinux_2_27_aarch64 manylinux_2_26_aarch64 manylinux_2_24_aarch64 manylinux_2_17_aarch64 manylinux2014_aarch64 linux_aarch64" ;;
+    x86_64-linux-musl)
+      echo "musllinux_1_2_x86_64 musllinux_1_1_x86_64 musllinux_1_0_x86_64 linux_x86_64" ;;
+    aarch64-linux-musl)
+      echo "musllinux_1_2_aarch64 musllinux_1_1_aarch64 musllinux_1_0_aarch64 linux_aarch64" ;;
+    x86_64-macos)
+      echo "macosx_15_0_x86_64 macosx_14_0_x86_64 macosx_13_0_x86_64 macosx_12_0_x86_64 macosx_11_0_x86_64 macosx_10_16_x86_64 macosx_10_13_x86_64 macosx_10_9_x86_64 macosx_15_0_universal2 macosx_14_0_universal2 macosx_13_0_universal2 macosx_12_0_universal2 macosx_11_0_universal2 macosx_10_16_universal2 macosx_10_9_universal2" ;;
+    aarch64-macos)
+      echo "macosx_15_0_arm64 macosx_14_0_arm64 macosx_13_0_arm64 macosx_12_0_arm64 macosx_11_0_arm64 macosx_15_0_universal2 macosx_14_0_universal2 macosx_13_0_universal2 macosx_12_0_universal2 macosx_11_0_universal2 macosx_10_16_universal2 macosx_10_9_universal2" ;;
+    *) die "unknown TRIPLET: $1" ;;
+  esac
+}
+
+one_leg() {
+  local triplet="$1"
+  local host_id; host_id="$(host_id_of "$triplet")"
+  local exe="$MIRROR/v$RT_TEBAKO/tebako-runtime-$RT_TEBAKO-$PY_V-$host_id"
+  local img="$exe.tfs"
+  [ -x "$exe" ] || die "no staged runtime for $triplet: $exe (run tools/stage_runtime first)"
+  [ -f "$img" ] || die "no staged runtime image for $triplet: $img"
+
+  local out_file="$FEEDSTOCK/closure/$VERSION-$triplet.txt"
+  local dest; dest="$(mktemp -d)/wheels"
+  mkdir -p "$dest"
+
+  step "resolve xml2rfc==$VERSION for $triplet (cp313, the staged runtime's own pip)"
+  local platform_args=()
+  local tag
+  for tag in $(platform_tags "$triplet"); do
+    platform_args+=(--platform "$tag")
+  done
+
+  local log; log="$(mktemp)"
+  if ! TEBAKO_RUNTIME_IMAGE="$img" "$exe" -m pip download \
+      --dest "$dest" --no-cache-dir --only-binary=:all: \
+      --python-version "${PY_V%.*}" --implementation cp \
+      "${platform_args[@]}" \
+      "xml2rfc==$VERSION" > "$log" 2>&1; then
+    cat "$log" >&2
+    # The named error lists what PyPI offers for each native member (the
+    # fail-closed audit of TODO.python/04 item 1), reported by the staged
+    # runtime itself (pip's vendored certifi carries the trust roots).
+    TEBAKO_RUNTIME_IMAGE="$img" "$exe" "$FEEDSTOCK/tools/pypi_offers.py" \
+      $(ruby -ryaml -e 'puts YAML.load_file(ARGV[0]).dig("build", "native_members").join(" ")' "$FEEDSTOCK/recipe.yml") \
+      "$VERSION" || true
+    die "pip resolution failed for $triplet — no matching wheel for at least one member (see above)"
+  fi
+
+  step "hash the resolved set -> $out_file"
+  mkdir -p "$FEEDSTOCK/closure"
+  {
+    echo "# xml2rfc install set — <sha256>  <wheel filename> (the store-sidecar shape;"
+    echo "# verifiable with: shasum -a 256 -c <this file> from a dir holding the wheels)"
+    echo "# generated by tools/gen_closure: the staged tebako python $PY_V runtime's own"
+    echo "# pip (cp313) resolved xml2rfc==$VERSION against PyPI for platform tags of $triplet"
+    (cd "$dest" && for f in *.whl; do
+      if command -v sha256sum >/dev/null 2>&1; then sha256sum "$f"; else shasum -a 256 "$f"; fi
+    done | sort)
+  } > "$out_file"
+
+  # Native-member wheel assertion (the recipe's native_members): each must
+  # be present EXACTLY once, as a wheel whose platform tag belongs to the
+  # leg's tag set (pip's accept-list already guarantees it — this asserts
+  # the closure never silently drops a native member to another leg's
+  # problem).
+  local members; members="$(ruby -ryaml -e 'puts YAML.load_file(ARGV[0]).dig("build", "native_members").join(" ")' "$FEEDSTOCK/recipe.yml")"
+  local m
+  for m in $members; do
+    # wheel filenames carry the normalized project name (_ for -)
+    local norm; norm="$(echo "$m" | tr '-' '_')"
+    local hits; hits="$(grep -c "  ${norm}-[^ ]*\.whl\$" "$out_file" || true)"
+    [ "$hits" = "1" ] || die "native member $m: $hits wheels in the closure (want exactly 1) — $out_file"
+    grep "  ${norm}-[^ ]*\.whl\$" "$out_file" | sed 's/^/  native OK: /'
+  done
+  echo "closure: $out_file ($(grep -c '\.whl$' "$out_file") wheels)"
+}
+
+if [ "${1:-}" = "--all" ]; then
+  for triplet in $(ruby -ryaml -e 'puts YAML.load_file(ARGV[0]).fetch("platforms").join(" ")' "$FEEDSTOCK/recipe.yml"); do
+    one_leg "$triplet"
+  done
+else
+  one_leg "${TRIPLET:-aarch64-macos}"
+fi
