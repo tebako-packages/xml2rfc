@@ -36,19 +36,21 @@ org blocks contents-API PUT).
    **`tfs mkimage`** (default limnifs — the format the runtime factory
    itself ships); tebako-pkg v2.2.0 is trailer surgery only, so the
    "press" step of the ruby feedstocks has no instance here.
-4. **Pre-publish channel.** tebako-runtime-python publishes nothing until
-   this chain proves (its AGENTS.md; the first publish is the owner's
-   explicit act). Staging + CI test legs therefore consume a same-day
-   factory build — the platform workflows with `publish=false` leave
-   `runtime-packages-*` run artifacts (retention-days: 1) — laid into a
-   `file://` runtime MIRROR (spec 05 §2's download-base shape) by
-   `tools/stage_runtime`; resolution rides `TEBAKO_RUNTIME_MIRROR` + the
-   config.yaml `runtimes:` pin (spec 04 §2's `kind: runtime` registry
-   entries remain PLANNED in v2.2.0 — TODO.v2-1/30). The
-   `channel: run-artifacts` block in `recipe.yml` becomes a release pin
-   at the owner's publish decision; the file:// path stays as the
-   offline-test mode. Workflow run artifacts are NOT a durable registry
-   — no release line ever references them.
+4. **Release channel.** tebako-runtime-python **v0.1.0 is live** (the
+   owner's publish decision landed 2026-09-06). Staging + CI test legs
+   consume the pinned factory RELEASE — `tools/stage_runtime`'s release
+   channel downloads the pinned tag's assets for the pinned python line
+   (every staged byte verified four ways: per-asset `.sha256` sidecar ↔
+   manifest shard ↔ monolith `manifest.json` ↔ `SHA256SUMS.txt`) and
+   lays them into a `file://` runtime MIRROR (spec 05 §2's download-base
+   shape); resolution rides `TEBAKO_RUNTIME_MIRROR` + the config.yaml
+   `runtimes:` pin (spec 04 §2's `kind: runtime` registry entries remain
+   PLANNED in v2.2.0 — TODO.v2-1/30). The pin is `recipe.yml`'s
+   `build.runtime` block (`channel: release` + `release:` tag). The
+   pre-publish `run-artifacts` channel remains selectable by env
+   override for pre-publish factory proof builds ONLY — workflow run
+   artifacts are NOT a durable registry (retention-days: 1) and no
+   release line ever references them.
 5. **Spec 32 spawn form.** The console script dispatches through the
    provider's own spec-17 dispatch (tebako v2.2.0, NORMATIVE) — no
    host-tier exe materialization, no POSIX-only shell shim. The in-image

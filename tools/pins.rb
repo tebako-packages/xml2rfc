@@ -38,11 +38,13 @@ pairs = {
   "PKG_NAME" => recipe.fetch("name"),
   "PKG_VERSION" => recipe.dig("upstream", "version") ||
                    die("recipe.yml upstream.version missing"),
-  # The pre-publish runtime channel (README decision 4): the factory's
-  # publish.yml run id whose runtime-packages-* run artifacts stage the
-  # file:// runtime mirror. One variable flips the channel at the
-  # owner's publish decision (run-artifacts → release).
+  # The runtime channel (README decision 4): the factory release tag the
+  # release channel stages from (the owner's publish decision landed
+  # 2026-09-06 — tebako-runtime-python v0.1.0 is live). The pre-publish
+  # run-artifacts channel remains selectable by env override in
+  # tools/stage_runtime for pre-publish factory proof builds.
   "RUNTIME_CHANNEL" => runtime.fetch("channel"),
+  "RUNTIME_RELEASE" => runtime["release"].to_s,
   "RUNTIME_FACTORY_RUN" => runtime["factory_run"].to_s,
   "RUNTIME_PYTHON" => runtime.fetch("version"),
   "RUNTIME_TEBAKO" => runtime.fetch("tebako"),

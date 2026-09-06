@@ -12,13 +12,12 @@ name: build-payload
 # container: form is out); the gnu legs are host-native (this feedstock
 # compiles nothing — pipstage fetches wheels). macos legs runner-native.
 #
-# Runtime staging (README decision 4): PRE-PUBLISH the factory publishes
-# nothing, so each leg stages its platform's runtime package from the
-# pinned factory RUN's artifacts into a file:// mirror
-# (tools/stage_runtime, run-artifacts channel; GH_TOKEN needs
-# actions:read on tamatebako/tebako-runtime-python — the org PAT). The
-# owner's publish decision flips recipe.yml build.runtime.channel to
-# `release` and stage_runtime's release channel takes over.
+# Runtime staging (README decision 4): the factory's v0.1.0 release is
+# live, so each leg stages its platform's runtime package from the pinned
+# factory release TAG into a file:// mirror (tools/stage_runtime, release
+# channel — every byte verified sidecar ↔ shard ↔ manifest.json ↔
+# SHA256SUMS.txt). GH_TOKEN needs contents:read on
+# tamatebako/tebako-runtime-python (public; the org PAT covers it).
 #
 # Release: NEVER automatic (the ecosystem hard rule — nothing merges or
 # publishes until the whole change chain is proven). Push/PR/tag runs
@@ -110,10 +109,10 @@ jobs:
           mv "$TEBAKO_ASSET" tebako
           mv "$TFS_ASSET" tfs
 
-      - name: Stage the pinned python runtime (file:// mirror, run-artifacts channel)
-        # gh needs actions:read on the FACTORY repo — the org PAT, not the
-        # run's GITHUB_TOKEN. Stages only THIS leg's platform package
-        # (HOST_IDS filter) into out/runtime-mirror.
+      - name: Stage the pinned python runtime (file:// mirror, release channel)
+        # gh needs contents:read on the FACTORY repo (public) — the org
+        # PAT, not the run's GITHUB_TOKEN. Stages only THIS leg's
+        # platform package (HOST_IDS filter) into out/runtime-mirror.
         env:
           GH_TOKEN: ${{ secrets.TEBAKO_CI_PAT_TOKEN || secrets.GITHUB_TOKEN }}
         run: HOST_IDS="${{ matrix.tool_platform }}" tools/stage_runtime
@@ -247,11 +246,10 @@ jobs:
           .packager/tebako --help > /dev/null
       - name: Stage the runtime mirror for the publish verify
         # tebako publish's clean-cache verify installs the payload and
-        # resolves its python runtime edge; the runtime line is
-        # PRE-PUBLISH, so the verify rides the same run-artifacts mirror
-        # + config pin as the dispatch proof (README decision 4). Scoped
-        # to THIS job: the mirror env is set at the step, the config pin
-        # in this job's TEBAKO_HOME.
+        # resolves its python runtime edge; the verify rides the same
+        # release-channel mirror + config pin as the legs (README
+        # decision 4). Scoped to THIS job: the mirror env is set at the
+        # step, the config pin in this job's TEBAKO_HOME.
         env:
           GH_TOKEN: ${{ secrets.TEBAKO_CI_PAT_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
