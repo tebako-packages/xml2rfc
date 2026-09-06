@@ -24,24 +24,23 @@ build:
   runtime:
     engine: python
     version: "3.13.15"     # the staging + exec runtime (tebako-runtime-python tidy line)
-    tebako: "0.0.0"        # the runtime package's <ver> (the factory's
-                           # VERSION — pre-publish it is the 0.0.0
-                           # placeholder; the first publish replaces this
-                           # with the real factory version)
-    # PRE-PUBLISH CHANNEL (tebako-runtime-python AGENTS.md: nothing
-    # publishes from the factory until TODO.python/03 proves the chain;
-    # the first publish is the owner's explicit act). The staging runtime
-    # and the CI test legs therefore resolve a same-day factory BUILD —
-    # publish.yml with publish=false uploads runtime-packages-<os>-<arch>-
-    # <py> run artifacts (retention-days: 1) — laid into a file://
-    # runtime mirror (spec 05 §2's download-base shape; tebako v2.2.0
-    # resolves runtimes by TEBAKO_RUNTIME_MIRROR + the config.yaml
-    # `runtimes:` pin — spec 04 §2's kind:runtime registry entries remain
-    # PLANNED, TODO.v2-1/30) by tools/stage_runtime. NEVER a hand-installed
-    # python. When the owner publishes, this block becomes a release pin
-    # and tools/stage_runtime's release channel takes over.
-    channel: run-artifacts   # run-artifacts (pre-publish) | release (post-publish)
-    factory_run: "33970588532"   # the publish.yml run id; filled per proof run
+    tebako: "0.1.0"        # the runtime package's <ver> (the factory's
+                           # VERSION — the real line opened at 0.1.0,
+                           # owner GO 2026-09-05; 0.0.0 was the
+                           # never-published placeholder)
+    # RELEASE CHANNEL (the owner's publish decision landed 2026-09-06:
+    # tebako-runtime-python v0.1.0 is live). The staging runtime and the
+    # CI test legs resolve the factory RELEASE — tools/stage_runtime's
+    # release channel downloads the pinned tag's assets (sha256-verified
+    # three ways: per-asset .sha256 sidecar ↔ SHA256SUMS.txt ↔ the
+    # manifest.json entry) into a file:// runtime mirror (spec 05 §2's
+    # download-base shape; tebako resolves runtimes by
+    # TEBAKO_RUNTIME_MIRROR + the config.yaml `runtimes:` pin — spec 04
+    # §2's kind:runtime registry entries remain PLANNED, TODO.v2-1/30).
+    # NEVER a hand-installed python. The run-artifacts channel remains
+    # selectable by env override for pre-publish factory builds only.
+    channel: release       # release (published factory tag) | run-artifacts (pre-publish proof builds)
+    release: "v0.1.0"      # the factory release tag (release channel)
   # The closure's native members (lxml — C extension, per-triplet wheels,
   # musl = musllinux; markupsafe / pyyaml optional C speedups): staged
   # from PyPI wheels matching the staging runtime's ABI tag (cp313) and
