@@ -249,12 +249,16 @@ jobs:
         # resolves its python runtime edge; the verify rides the same
         # release-channel mirror + config pin as the legs (README
         # decision 4). Scoped to THIS job: the mirror env is set at the
-        # step, the config pin in this job's TEBAKO_HOME.
+        # step, the config pin in this job's TEBAKO_HOME. The fresh
+        # publisher home does not exist yet on this path (no tebako
+        # invocation precedes the append — proven red on the first
+        # publish dispatch, run 34018018854), so create it first.
         env:
           GH_TOKEN: ${{ secrets.TEBAKO_CI_PAT_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           HOST_IDS=macos-arm64 tools/stage_runtime
+          mkdir -p "$TEBAKO_HOME"
           printf 'runtimes:\n  python:\n    version: "%s"\n    tebako: "%s"\n' \
             "$RUNTIME_PYTHON" "$RUNTIME_TEBAKO" >> "$TEBAKO_HOME/config.yaml"
       - name: Publish payloads + registry
