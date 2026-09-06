@@ -2,7 +2,7 @@ schema_version: 1
 # xml2rfc's own registry (tebako-packages conventions: published at the
 # default-branch root; entries filled at first release — versions fill
 # per-triplet artifact names + sha256 + the release ref).
-payloads:
-- name: xml2rfc
-  kind: app
-  versions: []
+# The publish upsert REFUSES a placeholder payload with `versions: []`
+# (parse error 65, proven on the first publish dispatch, run 34018379113)
+# — the first publish creates the entry; keep the scaffold empty.
+payloads: []
