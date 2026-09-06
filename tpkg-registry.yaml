@@ -1,8 +1,34 @@
 schema_version: 1
-# xml2rfc's own registry (tebako-packages conventions: published at the
-# default-branch root; entries filled at first release — versions fill
-# per-triplet artifact names + sha256 + the release ref).
-# The publish upsert REFUSES a placeholder payload with `versions: []`
-# (parse error 65, proven on the first publish dispatch, run 34018379113)
-# — the first publish creates the entry; keep the scaffold empty.
-payloads: []
+payloads:
+- name: xml2rfc
+  kind: app
+  versions:
+  - version: '3.34.0'
+    platforms:
+      aarch64-macos:
+        artifact: xml2rfc-3.34.0-macos-arm64.tfs
+        sha256: dd4e43954ed00af526ca52ba8e8470b7f83505817acad087b919d4a3de2fd0a7
+      x86_64-macos:
+        artifact: xml2rfc-3.34.0-macos-x86_64.tfs
+        sha256: '6e8ec87e57fa4627ae666e9961cb1d09a7bdf5246b77512505054d3c588a6664'
+      x86_64-linux-gnu:
+        artifact: xml2rfc-3.34.0-linux-gnu-x86_64.tfs
+        sha256: '5f55766ad63f78edd67d771dc1530f40d702236b1894294e85217d3b25611579'
+      aarch64-linux-gnu:
+        artifact: xml2rfc-3.34.0-linux-gnu-arm64.tfs
+        sha256: c823c6c43924c568c6da20913bf0ab510e558c01c284bd6e87b2087b6441b999
+      x86_64-linux-musl:
+        artifact: xml2rfc-3.34.0-linux-musl-x86_64.tfs
+        sha256: '6bab1ee9e28d5f386f4f40050b05a5e35a53ea95e01809d45eeee6fbea77d969'
+      aarch64-linux-musl:
+        artifact: xml2rfc-3.34.0-linux-musl-arm64.tfs
+        sha256: ea4d24fb970b31a2fc4141facc51f081997eaea10a6f40516afe671b2eb5b0a1
+    release:
+      ref: tfs:github:tebako-packages/xml2rfc:3.34.0
+    runtime_requirement:
+      engine: python
+      constraint: ~> 3.13.0
+      abi: cpython-313-x86_64-linux-gnu.so
+    entrypoints:
+    - xml2rfc
+  default: '3.34.0'
