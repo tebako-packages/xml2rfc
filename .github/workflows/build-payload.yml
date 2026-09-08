@@ -263,6 +263,9 @@ jobs:
       - name: Install the published payload against the wrong-line mirror
         run: |
           set -euo pipefail
+          # the fresh home does not exist yet on this path — create it
+          # first (the publish job's proven-red lesson)
+          mkdir -p "$TEBAKO_HOME"
           printf 'runtimes:\n  python:\n    version: "%s"\n    tebako: "%s"\n' "$WRONG_LINE" "$RUNTIME_TEBAKO" > "$TEBAKO_HOME/config.yaml"
           "$TEBAKO" add-registry "file://$PWD/tpkg-registry.yaml"
           TEBAKO_RUNTIME_MIRROR="file://$PWD/out/wrong-line-mirror" "$TEBAKO" install "$PKG_NAME"
