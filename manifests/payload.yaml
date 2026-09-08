@@ -26,6 +26,13 @@ provides:
       args_default: []
       runtime_requirement:
         engine: python
+        # spec 28 §8's native law: an abi in force REQUIRES the
+        # implementation named (an ABI is per-implementation by
+        # construction; cpython is the python implementation of record).
+        # Resolves against v0.1.0 runtimes through the compat window
+        # (their L1 predates provides.implementation; the factory's
+        # declaration lands with tebako-runtime-python#7).
+        implementation: cpython
         # native-extension payload (lxml/markupsafe/pyyaml C members
         # staged per triplet): the ABI line of the staging runtime, per
         # spec 05 §5 — the version line (constraint) AND the platform
