@@ -201,13 +201,106 @@ jobs:
           name: dist-${{ matrix.triplet }}
           path: out/${{ matrix.triplet }}/
 
+  wrong-line-refusal:
+    name: wrong-line refusal (spec 05 §5 acceptance)
+    # The resolver contract gate: dispatching the PUBLISHED payload (a
+    # native-extension build locked to the recipe's ABI line) with only a
+    # DIFFERENT python line available must fail with the named exit-69
+    # refusal — never a silent pick, never a crash. Exercises the pinned
+    # preference path and the unpinned download path. Uses the published
+    # artifact by design (the contract under test is the toolchain's, not
+    # this run's build). Locally proven 2026-09-08 against xml2rfc 3.34.0
+    # (baked ~> 3.13.0) × python 3.12.14: rc 69 + the named message on all
+    # three dispatch shapes.
+    needs: plan
+    runs-on: macos-14
+    env:
+      TEBAKO_HOME: ${{ github.workspace }}/.tebako-wrongline
+      TEBAKO: ${{ github.workspace }}/.tools/tebako
+      # Any published factory line != the recipe's staging line — the
+      # refusal does not depend on WHICH wrong line. Bump when the recipe
+      # line bumps (it must simply differ).
+      WRONG_LINE: "3.12.14"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read the toolchain pins (recipe.yml is the SSOT)
+        run: ruby tools/pins.rb macos-arm64 --env >> "$GITHUB_ENV"
+
+      - name: Guard — the wrong line must differ from the recipe line
+        run: |
+          set -euo pipefail
+          [ "$WRONG_LINE" != "$RUNTIME_PYTHON" ] || { echo "::error::WRONG_LINE equals the recipe line ($RUNTIME_PYTHON) — pick another"; exit 1; }
+          [ -s tpkg-registry.yaml ] || { echo "::error::no registry to resolve from"; exit 1; }
+
+      - name: Fetch the toolchain (tebako + tebako-shim, pinned, sha256-verified)
+        # Both binaries: install links shims at the dispatcher found beside
+        # the CLI (the 74-class refusal otherwise).
+        run: |
+          set -euo pipefail
+          mkdir -p .tools && cd .tools
+          base="https://github.com/tamatebako/tebako/releases/download/$TEBAKO_RELEASE"
+          curl -sLO "$base/$TEBAKO_ASSET"
+          curl -sLO "$base/$SHIM_ASSET"
+          curl -sLO "$base/SHA256SUMS"
+          echo "$TEBAKO_SHA256  $TEBAKO_ASSET" > SHA256PINS
+          echo "$SHIM_SHA256  $SHIM_ASSET" >> SHA256PINS
+          shasum -a 256 -c SHA256PINS
+          for pair in "$TEBAKO_ASSET:$TEBAKO_SHA256" "$SHIM_ASSET:$SHIM_SHA256"; do
+            asset="${pair%%:*}"; want="${pair##*:}"
+            got=$(awk -v a="$asset" '$2 == a {print $1}' SHA256SUMS)
+            [ "$got" = "$want" ] || { echo "::error::pin mismatch for $asset: recipe.yml=$want release=${got:-ABSENT}"; exit 1; }
+          done
+          chmod 755 "$TEBAKO_ASSET" "$SHIM_ASSET"
+          mv "$TEBAKO_ASSET" tebako
+          mv "$SHIM_ASSET" tebako-shim
+
+      - name: Stage ONLY the wrong python line into the runtime mirror
+        env:
+          GH_TOKEN: ${{ secrets.TEBAKO_CI_PAT_TOKEN || secrets.GITHUB_TOKEN }}
+        run: HOST_IDS=macos-arm64 PY_V="$WRONG_LINE" MIRROR=out/wrong-line-mirror tools/stage_runtime
+
+      - name: Install the published payload against the wrong-line mirror
+        run: |
+          set -euo pipefail
+          printf 'runtimes:\n  python:\n    version: "%s"\n    tebako: "%s"\n' "$WRONG_LINE" "$RUNTIME_TEBAKO" > "$TEBAKO_HOME/config.yaml"
+          "$TEBAKO" add-registry "file://$PWD/tpkg-registry.yaml"
+          TEBAKO_RUNTIME_MIRROR="file://$PWD/out/wrong-line-mirror" "$TEBAKO" install "$PKG_NAME"
+          test -x "$TEBAKO_HOME/shims/$PKG_NAME"
+
+      - name: Assert the named refusal — pinned wrong line
+        run: |
+          set -euo pipefail
+          set +e
+          out=$(TEBAKO_RUNTIME_MIRROR="file://$PWD/out/wrong-line-mirror" "$TEBAKO_HOME/shims/$PKG_NAME" --version 2>&1)
+          rc=$?
+          set -e
+          echo "$out"
+          [ "$rc" -eq 69 ] || { echo "::error::expected exit 69, got $rc"; exit 1; }
+          [ "$rc" -lt 128 ] || { echo "::error::signal death ($rc), never a named error"; exit 1; }
+          echo "$out" | grep -q "does not satisfy" || { echo "::error::the refusal must name the constraint mismatch: $out"; exit 1; }
+          ! echo "$out" | grep -qi "panicked" || { echo "::error::a rust panic is never the refusal"; exit 1; }
+
+      - name: Assert the named refusal — unpinned download path
+        run: |
+          set -euo pipefail
+          printf '' > "$TEBAKO_HOME/config.yaml"
+          set +e
+          out=$(TEBAKO_XML2RFC_VERSION="$PKG_VERSION" TEBAKO_RUNTIME_MIRROR="file://$PWD/out/wrong-line-mirror" "$TEBAKO_HOME/shims/$PKG_NAME" --version 2>&1)
+          rc=$?
+          set -e
+          echo "$out"
+          [ "$rc" -eq 69 ] || { echo "::error::expected exit 69, got $rc"; exit 1; }
+          echo "$out" | grep -qiE "no compatible runtime|satisf" || { echo "::error::the refusal must name the resolution failure: $out"; exit 1; }
+          ! echo "$out" | grep -qi "panicked" || { echo "::error::a rust panic is never the refusal"; exit 1; }
+
   release:
     name: publish
-    needs: [plan, build]
+    needs: [plan, build, wrong-line-refusal]
     runs-on: macos-14
     # The owner's explicit act ONLY (the ecosystem hard rule): a dispatch
     # with publish=true on a tag ref. Push/tag/PR runs never publish.
-    if: ${{ always() && !cancelled() && inputs.publish && needs.build.result == 'success' && startsWith(github.ref, 'refs/tags/') }}
+    if: ${{ always() && !cancelled() && inputs.publish && needs.build.result == 'success' && needs.wrong-line-refusal.result == 'success' && startsWith(github.ref, 'refs/tags/') }}
     env:
       TEBAKO_CLI: ${{ github.workspace }}/.packager/tebako
       TEBAKO_HOME: ${{ github.workspace }}/.tebako
