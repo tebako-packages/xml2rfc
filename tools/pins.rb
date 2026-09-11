@@ -48,6 +48,11 @@ pairs = {
   "RUNTIME_FACTORY_RUN" => runtime["factory_run"].to_s,
   "RUNTIME_PYTHON" => runtime.fetch("version"),
   "RUNTIME_TEBAKO" => runtime.fetch("tebako"),
+  # Signing (spec 09 §9; the metanorma pattern): the tamatebako root's
+  # PRIMARY keyid (low 64). The publish step passes it to
+  # `tebako publish --sign=`; empty when the recipe declares no signing
+  # (unsigned stays first-class, loudly).
+  "SIGNING_KEYID" => recipe.dig("signing", "keyid").to_s,
 }
 
 # triplet -> the tebako release-asset platform (spec 03 §3; identical to
