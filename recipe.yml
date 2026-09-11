@@ -24,10 +24,12 @@ build:
   runtime:
     engine: python
     version: "3.13.15"     # the staging + exec runtime (tebako-runtime-python tidy line)
-    tebako: "0.1.0"        # the runtime package's <ver> (the factory's
+    tebako: "0.1.3"        # the runtime package's <ver> (the factory's
                            # VERSION — the real line opened at 0.1.0,
                            # owner GO 2026-09-05; 0.0.0 was the
-                           # never-published placeholder)
+                           # never-published placeholder). 0.1.3 is the
+                           # first SIGNED line (the spec 09 §9 re-cut) —
+                           # the REQUIRE_SIGNED=1 closure needs it.
     # RELEASE CHANNEL (the owner's publish decision landed 2026-09-06:
     # tebako-runtime-python v0.1.0 is live). The staging runtime and the
     # CI test legs resolve the factory RELEASE — tools/stage_runtime's
@@ -40,7 +42,7 @@ build:
     # NEVER a hand-installed python. The run-artifacts channel remains
     # selectable by env override for pre-publish factory builds only.
     channel: release       # release (published factory tag) | run-artifacts (pre-publish proof builds)
-    release: "v0.1.0"      # the factory release tag (release channel)
+    release: "v0.1.3"      # the factory release tag (release channel)
   # The closure's native members (lxml — C extension, per-triplet wheels,
   # musl = musllinux; markupsafe / pyyaml optional C speedups): staged
   # from PyPI wheels matching the staging runtime's ABI tag (cp313) and
