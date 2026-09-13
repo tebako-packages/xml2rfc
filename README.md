@@ -2,21 +2,18 @@
 
 Feedstock for **xml2rfc** — the IETF RFC/XML authoring renderer, packaged
 as a tebako `kind: app` payload. The first python payload of the v2
-ecosystem (TODO.python/03); kills the host-python convention behind
-metanorma's ietf flavor path (PROGRESS/25's chocolatey python313 saga).
+ecosystem, and the hermetic answer for metanorma's ietf flavor path: no
+host python needed anywhere.
 
-**Status: build machinery proven locally end-to-end on aarch64-macos
-(stage → closure → build → both spec-26 checks green → dispatcher proof:
-file:// registry install + jailed shim render).** Not yet pushed; the org
-repo `tebako-packages/xml2rfc` is created at first push (git+ssh — the
-org blocks contents-API PUT).
+**Status: live.** Releases (`3.34.0` and up) publish the per-triplet
+payload images with `SHA256SUMS`, and this repo's `tpkg-registry.yaml`
+serves resolution.
 
-## Locked design decisions (2026-09-05)
+## Design decisions
 
 1. **Per-triplet, never universal.** The closure carries lxml (C
    extension; manylinux/musllinux/macOS wheels) plus markupsafe/pyyaml
-   optional C speedups. The audit correction to TODO.python/03 item 1
-   stands: universality was wrong for this payload.
+   optional C speedups — a universal image cannot serve that matrix.
 2. **ABI-line runtime edge.** Every entrypoint's `runtime_requirement` is
    `engine: python, constraint: ~> 3.13.0, abi: <staging platform tag>` —
    spec 05 §5's native-extension law (wrong line = named error, never a
@@ -36,21 +33,19 @@ org blocks contents-API PUT).
    **`tfs mkimage`** (default limnifs — the format the runtime factory
    itself ships); tebako-pkg v2.2.0 is trailer surgery only, so the
    "press" step of the ruby feedstocks has no instance here.
-4. **Release channel.** tebako-runtime-python **v0.1.0 is live** (the
-   owner's publish decision landed 2026-09-06). Staging + CI test legs
-   consume the pinned factory RELEASE — `tools/stage_runtime`'s release
+4. **Release channel.** Staging + CI test legs consume the pinned
+   tebako-runtime-python RELEASE — `tools/stage_runtime`'s release
    channel downloads the pinned tag's assets for the pinned python line
    (every staged byte verified four ways: per-asset `.sha256` sidecar ↔
    manifest shard ↔ monolith `manifest.json` ↔ `SHA256SUMS.txt`) and
    lays them into a `file://` runtime MIRROR (spec 05 §2's download-base
    shape); resolution rides `TEBAKO_RUNTIME_MIRROR` + the config.yaml
    `runtimes:` pin (spec 04 §2's `kind: runtime` registry entries remain
-   PLANNED in v2.2.0 — TODO.v2-1/30). The pin is `recipe.yml`'s
-   `build.runtime` block (`channel: release` + `release:` tag). The
-   pre-publish `run-artifacts` channel remains selectable by env
-   override for pre-publish factory proof builds ONLY — workflow run
-   artifacts are NOT a durable registry (retention-days: 1) and no
-   release line ever references them.
+   planned). The pin is `recipe.yml`'s `build.runtime` block
+   (`channel: release` + `release:` tag). The `run-artifacts` channel
+   remains selectable by env override for pre-publish factory proof
+   builds ONLY — workflow run artifacts are NOT a durable registry
+   (retention-days: 1) and no release line ever references them.
 5. **Spec 32 spawn form.** The console script dispatches through the
    provider's own spec-17 dispatch (tebako v2.2.0, NORMATIVE) — no
    host-tier exe materialization, no POSIX-only shell shim. The in-image
@@ -58,10 +53,9 @@ org blocks contents-API PUT).
    mount point is the dispatcher's choice), then installs the lxml VFS
    compat layer (deviation A below) before importing xml2rfc.
 6. **Platforms = the factory's POSIX six.** x86_64/aarch64 ×
-   linux-gnu/linux-musl/macos. Windows is TODO.python/05's descoped row;
-   this feedstock gains `x86_64-windows-ucrt` with 05, and metanorma's
-   ietf DEPENDS keeps windows on its current path until then (recorded
-   in the DEPENDS PR body).
+   linux-gnu/linux-musl/macos. Windows joins as `x86_64-windows-ucrt`
+   when the python runtime's ucrt64 line lands; metanorma's ietf DEPENDS
+   keeps windows on its current path until then.
 7. **Payload checks (spec 26).** `version` (exit 0) + `render-txt`
    (fixture mini.xml → mini.txt), carried in the manifest.
 
