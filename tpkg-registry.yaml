@@ -35,4 +35,36 @@ payloads:
       abi: cpython-313-x86_64-linux-gnu.so
     entrypoints:
     - xml2rfc
+  - version: '3.34.1'
+    platforms:
+      aarch64-macos:
+        artifact: xml2rfc-3.34.1-macos-arm64.tfs
+        sha256: '18dc9a01bfc1cf38988b60e4116d5b8ea7e4db5ad03584444b377e82837daf6e'
+      x86_64-macos:
+        artifact: xml2rfc-3.34.1-macos-x86_64.tfs
+        sha256: f2b868fe184e6dbcb001045c13ca99c5e0a8f12cd57fa2c8da75a430d0bce775
+      x86_64-linux-gnu:
+        artifact: xml2rfc-3.34.1-linux-gnu-x86_64.tfs
+        sha256: f1071edf93be9f3db70c01c6b53546df5b04d98604adba1dd410bf851a8ccb9b
+      aarch64-linux-gnu:
+        artifact: xml2rfc-3.34.1-linux-gnu-arm64.tfs
+        sha256: c10f6b6f943e1ae576180c5cc751e62d419fb5fd4a7123b1fa8a77b2973aea33
+      x86_64-linux-musl:
+        artifact: xml2rfc-3.34.1-linux-musl-x86_64.tfs
+        sha256: '603d7387bb3d1a7d17facf8839c9cddab977c6ec502bcb033b946611dd86d50a'
+      aarch64-linux-musl:
+        artifact: xml2rfc-3.34.1-linux-musl-arm64.tfs
+        sha256: '2156f66d6a0a64e2723305c2319f77a2df5da42c4d6059be4811f9bc0d3df164'
+    release:
+      ref: tfs:github:tebako-packages/xml2rfc:3.34.1
+    signature:
+      keyid: efc3c250f7862a48
+      asc: xml2rfc-3.34.1-linux-gnu-x86_64.tfs.asc
+    runtime_requirement:
+      engine: python
+      constraint: ~> 3.14.0
+      implementation: cpython
+      abi: cpython-314-x86_64-linux-gnu.so
+    entrypoints:
+    - xml2rfc
   default: '3.34.0'
