@@ -37,9 +37,10 @@ provides:
         # staged per triplet): the ABI line of the staging runtime, per
         # spec 05 §5 — the version line (constraint) AND the platform
         # line (abi, filled by tools/build from the staging runtime's
-        # OWN .abi sidecar — the factory is the single owner;
-        # TODO.python/04 item 1).
-        constraint: "~> 3.13.0"
+        # OWN .abi sidecar — the factory is the single owner; the
+        # wheel-tag ↔ ABI-line mapping audit runs fail-closed in
+        # tools/gen_closure).
+        constraint: "~> 3.14.0"
         abi: "@@ABI@@"
   platforms: []                   # filled by tools/build from recipe.yml (the
                                   # leg's triplet; the template stays parseable)
@@ -51,7 +52,7 @@ requires:
   # The abi-line half rides each entrypoint's runtime_requirement.
   - kind: language
     engine: python
-    constraint: "~> 3.13.0"
+    constraint: "~> 3.14.0"
 # spec 26 payload checks — the payload carries its own compile test.
 checks:
   version:

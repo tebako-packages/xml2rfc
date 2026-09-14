@@ -11,10 +11,10 @@ upstream:
   # The locked closure with hashes is generated, never hand-authored:
   # closure/<version>-<triplet>.txt (metanorma pattern).
   pypi: "xml2rfc"
-  version: "3.34.0"          # PyPI-verified latest, 2026-09-05
+  version: "3.34.1"          # PyPI-verified latest, 2026-09-14
   source: "https://pypi.org"
-  # requires_python >= 3.10 (PyPI-verified 2026-09-05); upstream tests
-  # through 3.13. The MANIFEST's runtime edge is the ABI line (~> 3.13.0),
+  # requires_python >= 3.10 (PyPI-verified); upstream classifiers cover
+  # python 3.14. The MANIFEST's runtime edge is the ABI line (~> 3.14.0),
   # not this range — the payload carries lxml/markupsafe C extensions, so
   # spec 05 §5's native-extension law applies: wrong line = named error,
   # never a segfault. This range documents the pure-language floor only.
@@ -23,39 +23,46 @@ build:
   system: pipstage         # stage a pip --target closure with a tebako runtime's own python
   runtime:
     engine: python
-    version: "3.13.15"     # the staging + exec runtime (tebako-runtime-python tidy line)
-    tebako: "0.1.3"        # the runtime package's <ver> (the factory's
-                           # VERSION — the real line opened at 0.1.0,
-                           # owner GO 2026-09-05; 0.0.0 was the
-                           # never-published placeholder). 0.1.3 is the
-                           # first SIGNED line (the spec 09 §9 re-cut) —
-                           # the REQUIRE_SIGNED=1 closure needs it.
-    # RELEASE CHANNEL (the owner's publish decision landed 2026-09-06:
-    # tebako-runtime-python v0.1.0 is live). The staging runtime and the
-    # CI test legs resolve the factory RELEASE — tools/stage_runtime's
-    # release channel downloads the pinned tag's assets (sha256-verified
-    # three ways: per-asset .sha256 sidecar ↔ SHA256SUMS.txt ↔ the
-    # manifest.json entry) into a file:// runtime mirror (spec 05 §2's
-    # download-base shape; tebako resolves runtimes by
-    # TEBAKO_RUNTIME_MIRROR + the config.yaml `runtimes:` pin — spec 04
-    # §2's kind:runtime registry entries remain PLANNED, TODO.v2-1/30).
-    # NEVER a hand-installed python. The run-artifacts channel remains
-    # selectable by env override for pre-publish factory builds only.
+    version: "3.14.7"      # the staging + exec runtime (the ONE line every leg
+                           # rides — the ABI edge stays uniform: the factory's
+                           # windows-ucrt64 leg exists only for this line, the
+                           # source factory ships no 3.13 windows-msys asset)
+    tebako: "0.2.0"        # the runtime package's <ver> (the factory's
+                           # VERSION). 0.2.0 is the shard-model line: the
+                           # release serves per-package manifest shards +
+                           # per-asset .sha256 sidecars + OpenPGP .asc
+                           # signatures, and NO monolithic manifest.json /
+                           # SHA256SUMS.txt (tools/stage_runtime derives the
+                           # trimmed monoliths consumer-side).
+    # RELEASE CHANNEL: the staging runtime and the CI test legs resolve the
+    # factory RELEASE — tools/stage_runtime's release channel enumerates the
+    # pinned tag's shards (gh release view), fetches the assets each shard
+    # names, verifies every staged byte three ways (per-asset .sha256
+    # sidecar ↔ staged bytes ↔ the shard's own digest fields + the filename
+    # identity), and derives the TRIMMED manifest.json + SHA256SUMS.txt into
+    # a file:// runtime mirror (spec 05 §2's download-base shape; tebako
+    # resolves runtimes by TEBAKO_RUNTIME_MIRROR + the config.yaml
+    # `runtimes:` pin — spec 04 §2's kind:runtime registry entries remain
+    # PLANNED). NEVER a hand-installed python. The run-artifacts channel
+    # remains selectable by env override for pre-publish factory builds only.
     channel: release       # release (published factory tag) | run-artifacts (pre-publish proof builds)
-    release: "v0.1.3"      # the factory release tag (release channel)
+    release: "v0.2.0"      # the factory release tag (release channel)
   # The closure's native members (lxml — C extension, per-triplet wheels,
   # musl = musllinux; markupsafe / pyyaml optional C speedups): staged
-  # from PyPI wheels matching the staging runtime's ABI tag (cp313) and
-  # the leg's triplet — the wheel-tag ↔ ABI-line/triplet mapping of
-  # TODO.python/04 item 1. Source builds of native members are NEVER a
-  # feedstock path (no compilation machinery for audiences 1-3).
+  # from PyPI wheels matching the staging runtime's ABI tag (cp314) and
+  # the leg's triplet — the wheel-tag ↔ ABI-line mapping audit runs
+  # fail-closed in tools/gen_closure. Source builds of native members are
+  # NEVER a feedstock path (no compilation machinery for audiences 1-3).
   native_members: ["lxml", "markupsafe", "pyyaml"]
 
 platforms:
-  # the tebako-runtime-python 02 matrix's POSIX legs (windows is
-  # TODO.python/05's descoped row — this feedstock gains the
-  # x86_64-windows-ucrt leg with 05, and the metanorma DEPENDS edge
-  # keeps windows on its current path until then)
+  # the tebako-runtime-python matrix's POSIX six. The windows-ucrt leg
+  # waits on the factory: the windows python runtime has no mount tier
+  # yet (its fs TU answers any mount with a named exit 69 — the factory
+  # README's windows boundary), so a windows payload could not execute
+  # on its own platform. The line choice (3.14.7) already anticipates
+  # the leg: the factory's windows-ucrt64 runtime exists only on the
+  # 3.14 line, and the ABI edge stays uniform when the leg lands.
   - x86_64-linux-gnu
   - aarch64-linux-gnu
   - x86_64-linux-musl
@@ -65,16 +72,16 @@ platforms:
 
 provides:
   entrypoints:
-    - {name: "xml2rfc", path: "/bin/xml2rfc", version: "3.34.0"}
+    - {name: "xml2rfc", path: "/bin/xml2rfc", version: "3.34.1"}
   executables: []          # no host-tier executables: the console script
                            # needs the interpreter (spec 32's spawn form)
 
 ci:
   # The leg topology (host runner per triplet): the tebako-runtime-python
-  # factory's POSIX matrix minus windows (TODO.python/05). The linux legs
-  # run on the ubuntu host and docker-run the pinned tpkg-builder image
-  # per triplet-matched step — the musl image is alpine-based and node
-  # actions cannot run on musl (the factory's _build-platform.yml grammar).
+  # factory's POSIX matrix. The linux legs run on the ubuntu host and
+  # docker-run the pinned tpkg-builder image per triplet-matched step —
+  # the musl image is alpine-based and node actions cannot run on musl
+  # (the factory's _build-platform.yml grammar).
   hosts:
     x86_64-linux-gnu: "ubuntu-22.04"
     aarch64-linux-gnu: "ubuntu-22.04-arm"

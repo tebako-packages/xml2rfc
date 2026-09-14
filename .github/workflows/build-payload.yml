@@ -3,7 +3,12 @@ name: build-payload
 # → release. Conventions: docs/conventions.md in tebako-packages/index.
 #
 # The first python payload (kind: app on the tebako-runtime-python
-# 3.13.15 line). Six POSIX legs (windows lands with TODO.python/05).
+# 3.14.7 line — the one line every leg rides, so the ABI edge is uniform
+# when the windows leg lands: the factory's windows-ucrt64 runtime exists
+# only on the 3.14 line). Six POSIX legs; the windows-ucrt leg waits on
+# the factory's windows mount tier (the runtime's fs TU answers any mount
+# with a named exit 69 — a windows payload could not execute on its own
+# platform until then).
 #
 # Leg grammar (the runtime factory's _build-platform.yml): the linux legs
 # run on the ubuntu host; the musl legs docker-run the pinned
@@ -12,11 +17,12 @@ name: build-payload
 # container: form is out); the gnu legs are host-native (this feedstock
 # compiles nothing — pipstage fetches wheels). macos legs runner-native.
 #
-# Runtime staging (README decision 4): the factory's v0.1.0 release is
-# live, so each leg stages its platform's runtime package from the pinned
-# factory release TAG into a file:// mirror (tools/stage_runtime, release
-# channel — every byte verified sidecar ↔ shard ↔ manifest.json ↔
-# SHA256SUMS.txt). GH_TOKEN needs contents:read on
+# Runtime staging (README decision 4): each leg stages its platform's
+# runtime package from the pinned factory release TAG into a file://
+# mirror (tools/stage_runtime, release channel — the factory's shard
+# model: every byte verified sidecar ↔ staged bytes ↔ the shard's own
+# digest fields, with the trimmed manifest.json + SHA256SUMS.txt derived
+# consumer-side). GH_TOKEN needs contents:read on
 # tamatebako/tebako-runtime-python (public; the org PAT covers it).
 #
 # Release: NEVER automatic (the ecosystem hard rule — nothing merges or
@@ -94,9 +100,11 @@ jobs:
           set -euo pipefail
           mkdir -p .tools && cd .tools
           base="https://github.com/tamatebako/tebako/releases/download/$TEBAKO_RELEASE"
-          curl -sLO "$base/$TEBAKO_ASSET"
-          curl -sLO "$base/$TFS_ASSET"
-          curl -sLO "$base/SHA256SUMS"
+          # -fsSL + retries: a transient TLS/HTTP flake fails loudly with
+          # error text, never a silent error page the sha pin then rejects.
+          curl -fsSLO --retry 5 --retry-all-errors --retry-delay 3 "$base/$TEBAKO_ASSET"
+          curl -fsSLO --retry 5 --retry-all-errors --retry-delay 3 "$base/$TFS_ASSET"
+          curl -fsSLO --retry 5 --retry-all-errors --retry-delay 3 "$base/SHA256SUMS"
           echo "$TEBAKO_SHA256  $TEBAKO_ASSET" > SHA256PINS
           echo "$TFS_SHA256  $TFS_ASSET" >> SHA256PINS
           if command -v sha256sum >/dev/null 2>&1; then sha256sum -c SHA256PINS; else shasum -a 256 -c SHA256PINS; fi
@@ -240,9 +248,11 @@ jobs:
           set -euo pipefail
           mkdir -p .tools && cd .tools
           base="https://github.com/tamatebako/tebako/releases/download/$TEBAKO_RELEASE"
-          curl -sLO "$base/$TEBAKO_ASSET"
-          curl -sLO "$base/$SHIM_ASSET"
-          curl -sLO "$base/SHA256SUMS"
+          # -fsSL + retries: a transient TLS/HTTP flake fails loudly with
+          # error text, never a silent error page the sha pin then rejects.
+          curl -fsSLO --retry 5 --retry-all-errors --retry-delay 3 "$base/$TEBAKO_ASSET"
+          curl -fsSLO --retry 5 --retry-all-errors --retry-delay 3 "$base/$SHIM_ASSET"
+          curl -fsSLO --retry 5 --retry-all-errors --retry-delay 3 "$base/SHA256SUMS"
           echo "$TEBAKO_SHA256  $TEBAKO_ASSET" > SHA256PINS
           echo "$SHIM_SHA256  $SHIM_ASSET" >> SHA256PINS
           shasum -a 256 -c SHA256PINS
@@ -285,11 +295,21 @@ jobs:
           ! echo "$out" | grep -qi "panicked" || { echo "::error::a rust panic is never the refusal"; exit 1; }
 
       - name: Assert the named refusal — unpinned download path
+        # TEBAKO_XML2RFC_VERSION must name an INSTALLED version. The
+        # recipe's version and the registry's published version
+        # legitimately differ between a version-bump PR and its publish
+        # (a pinned-but-absent version earns the shim's exit-65 refusal —
+        # not the exit-69 runtime refusal under test), and with NO pin the
+        # emptied config resolves nothing at all — the registry entry lives
+        # in the same config.yaml, so dispatch dies at version resolution
+        # before the runtime constraint is ever consulted. Derive the one
+        # version the install step put in the store.
         run: |
           set -euo pipefail
           printf '' > "$TEBAKO_HOME/config.yaml"
+          installed="$(basename "$TEBAKO_HOME/payloads/$PKG_NAME"/*.tfs .tfs)"
           set +e
-          out=$(TEBAKO_XML2RFC_VERSION="$PKG_VERSION" TEBAKO_RUNTIME_MIRROR="file://$PWD/out/wrong-line-mirror" "$TEBAKO_HOME/shims/$PKG_NAME" --version 2>&1)
+          out=$(TEBAKO_XML2RFC_VERSION="$installed" TEBAKO_RUNTIME_MIRROR="file://$PWD/out/wrong-line-mirror" "$TEBAKO_HOME/shims/$PKG_NAME" --version 2>&1)
           rc=$?
           set -e
           echo "$out"
@@ -332,9 +352,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .packager
-          curl -sL --fail -o .packager/tebako \
+          curl -sL --fail --retry 5 --retry-all-errors --retry-delay 3 -o .packager/tebako \
             "https://github.com/tamatebako/tebako/releases/download/$TEBAKO_RELEASE/$TEBAKO_ASSET"
-          curl -sL --fail -o .packager/tebako-shim \
+          curl -sL --fail --retry 5 --retry-all-errors --retry-delay 3 -o .packager/tebako-shim \
             "https://github.com/tamatebako/tebako/releases/download/$TEBAKO_RELEASE/$SHIM_ASSET"
           echo "$TEBAKO_SHA256  .packager/tebako" | shasum -a 256 -c -
           echo "$SHIM_SHA256  .packager/tebako-shim" | shasum -a 256 -c -
@@ -387,7 +407,7 @@ jobs:
           # SIGN_ARGS carries --sign=<keyid> when the recipe signs; the
           # ${arr[@]+...} guard keeps the empty (unsigned) expansion
           # legal under set -u on bash 3.2 (macOS's /bin/bash).
-          # shellcheck disable=SC2046  # --payload-args MUST word-split into six --payload pairs
+          # shellcheck disable=SC2046  # --payload-args MUST word-split into the per-triplet --payload pairs
           "$TEBAKO_CLI" publish "${SIGN_ARGS[@]+"${SIGN_ARGS[@]}"}" --name "$PKG_NAME" \
             --release "tfs:github:tebako-packages/xml2rfc:${{ github.ref_name }}" \
             $(ruby tools/pins.rb --payload-args) \
@@ -410,7 +430,7 @@ jobs:
           branch="publish/${{ github.ref_name }}-registry"
           git checkout -b "$branch"
           git add tpkg-registry.yaml
-          git commit -m "publish ${{ github.ref_name }}: registry entry (the POSIX six)"
+          git commit -m "publish ${{ github.ref_name }}: registry entry (all recipe platforms)"
           git push origin "$branch"
           if ! gh pr view "$branch" >/dev/null 2>&1; then
             gh pr create --base main --head "$branch" \
