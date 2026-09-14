@@ -12,9 +12,9 @@
 # mechanism. The runtime's env image supplies the stdlib + pip; the
 # payload supplies exactly the locked closure.
 #
-# POSIX only: the windows leg lands with TODO.python/05 (the drive
-# re-rooting dance of the ruby stubs has no python instance yet — do NOT
-# pre-author it).
+# Platform-neutral: os.path.dirname stays lexical, so the windows
+# driver's drive-rooted VFS spellings resolve the same way (no
+# re-rooting dance — do NOT pre-author one).
 import os
 import sys
 

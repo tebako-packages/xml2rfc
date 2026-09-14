@@ -15,16 +15,18 @@ serves resolution.
    extension; manylinux/musllinux/macOS wheels) plus markupsafe/pyyaml
    optional C speedups — a universal image cannot serve that matrix.
 2. **ABI-line runtime edge.** Every entrypoint's `runtime_requirement` is
-   `engine: python, constraint: ~> 3.13.0, abi: <staging platform tag>` —
+   `engine: python, constraint: ~> 3.14.0, abi: <staging platform tag>` —
    spec 05 §5's native-extension law (wrong line = named error, never a
    segfault). The abi string flows VERBATIM from the runtime package's
-   own `.abi` sidecar (e.g. `cpython-313-darwin.so` — suffix included,
+   own `.abi` sidecar (e.g. `cpython-314-darwin.so` — suffix included,
    the factory is the single owner; tools/build fails named when the
    sidecar is absent/empty). Upstream's pure-language range
-   (`requires_python >= 3.10`, tested through 3.13) is documented in
-   `recipe.yml`, not used as the edge constraint. The staging/exec line
-   is python **3.13.15** (the factory's `tidy` — "the xml2rfc driving
-   line").
+   (`requires_python >= 3.10`, classifiers covering 3.14) is documented
+   in `recipe.yml`, not used as the edge constraint. The staging/exec
+   line is python **3.14.7** — the one line every leg rides, so the ABI
+   edge stays uniform when the windows leg lands (the factory's
+   windows-ucrt64 runtime exists only on the 3.14 line; the source
+   factory ships no 3.13 windows-msys asset).
 3. **pipstage build.** `tools/build` stages the pinned PyPI closure with
    `pip install --target` run by a tebako python runtime's OWN interpreter
    (dogfood) — never the runner's python, never the user's machine. The
@@ -33,18 +35,22 @@ serves resolution.
    **`tfs mkimage`** (default limnifs — the format the runtime factory
    itself ships); tebako-pkg v2.2.0 is trailer surgery only, so the
    "press" step of the ruby feedstocks has no instance here.
-4. **Release channel.** Staging + CI test legs consume the pinned
-   tebako-runtime-python RELEASE — `tools/stage_runtime`'s release
-   channel downloads the pinned tag's assets for the pinned python line
-   (every staged byte verified four ways: per-asset `.sha256` sidecar ↔
-   manifest shard ↔ monolith `manifest.json` ↔ `SHA256SUMS.txt`) and
-   lays them into a `file://` runtime MIRROR (spec 05 §2's download-base
-   shape); resolution rides `TEBAKO_RUNTIME_MIRROR` + the config.yaml
-   `runtimes:` pin (spec 04 §2's `kind: runtime` registry entries remain
-   planned). The pin is `recipe.yml`'s `build.runtime` block
-   (`channel: release` + `release:` tag). The `run-artifacts` channel
-   remains selectable by env override for pre-publish factory proof
-   builds ONLY — workflow run artifacts are NOT a durable registry
+4. **Release channel (the factory's shard model).** Staging + CI test
+   legs consume the pinned tebako-runtime-python RELEASE —
+   `tools/stage_runtime`'s release channel enumerates the pinned tag's
+   per-package manifest shards (`gh release view --json assets`), fetches
+   the assets each shard names (exe + env image + the windows `.dll`
+   facet, each with its `.sha256` sidecar), verifies every staged byte
+   three ways (sidecar ↔ staged bytes ↔ the shard's own digest fields +
+   the filename identity), and derives the TRIMMED `manifest.json` +
+   `SHA256SUMS.txt` consumer-side into a `file://` runtime MIRROR (spec
+   05 §2's download-base shape) — a partial mirror never advertises bytes
+   it does not carry. Resolution rides `TEBAKO_RUNTIME_MIRROR` + the
+   config.yaml `runtimes:` pin (spec 04 §2's `kind: runtime` registry
+   entries remain planned). The pin is `recipe.yml`'s `build.runtime`
+   block (`channel: release` + `release:` tag). The `run-artifacts`
+   channel remains selectable by env override for pre-publish factory
+   proof builds ONLY — workflow run artifacts are NOT a durable registry
    (retention-days: 1) and no release line ever references them.
 5. **Spec 32 spawn form.** The console script dispatches through the
    provider's own spec-17 dispatch (tebako v2.2.0, NORMATIVE) — no
@@ -53,9 +59,12 @@ serves resolution.
    mount point is the dispatcher's choice), then installs the lxml VFS
    compat layer (deviation A below) before importing xml2rfc.
 6. **Platforms = the factory's POSIX six.** x86_64/aarch64 ×
-   linux-gnu/linux-musl/macos. Windows joins as `x86_64-windows-ucrt`
-   when the python runtime's ucrt64 line lands; metanorma's ietf DEPENDS
-   keeps windows on its current path until then.
+   linux-gnu/linux-musl/macos. The windows-ucrt leg waits on the
+   factory: the windows python runtime has no mount tier yet (its fs TU
+   answers any mount with a named exit 69 — the factory README's windows
+   boundary), so a windows payload could not execute on its own platform
+   until then. Metanorma's ietf DEPENDS keeps windows on its current path
+   in the meantime.
 7. **Payload checks (spec 26).** `version` (exit 0) + `render-txt`
    (fixture mini.xml → mini.txt), carried in the manifest.
 
