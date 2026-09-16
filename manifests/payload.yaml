@@ -42,7 +42,7 @@ provides:
         # tools/gen_closure).
         constraint: "~> 3.14.0"
         abi: "@@ABI@@"
-  platforms: []                   # filled by tools/build from recipe.yml (the
+  platforms: []                   # filled by tools/build from Tebakofile (the
                                   # leg's triplet; the template stays parseable)
   capabilities: {exec: true, read: true}
 requires:

@@ -26,8 +26,8 @@
 #   5. tfs mkimage (default limnifs format — the image kind the runtime
 #      factory itself ships; auto-detected by every v2 reader)
 #
-# Inputs (env, defaults from recipe.yml — the SSOT; no literals here):
-#   TRIPLET   one of recipe.yml platforms (default: aarch64-macos)
+# Inputs (env, defaults from Tebakofile — the SSOT; no literals here):
+#   TRIPLET   one of Tebakofile platforms (default: aarch64-macos)
 #   MIRROR    tools/stage_runtime's output (default: out/runtime-mirror)
 #   TFS_CLI   the pinned tfs binary (default: tfs on PATH)
 #   WORK/OUT  build workspace / artifact dir (out/work-<triplet>, out/<triplet>)
@@ -37,7 +37,7 @@
 set -euo pipefail
 
 FEEDSTOCK="$(cd "$(dirname "$0")/.." && pwd)"
-recipe() { ruby -ryaml -e "puts(YAML.load_file('$FEEDSTOCK/recipe.yml').dig(*ARGV) || '')" "$@"; }
+recipe() { ruby -ryaml -e "puts(YAML.load_file('$FEEDSTOCK/Tebakofile').dig(*ARGV) || '')" "$@"; }
 
 VERSION="${VERSION:-$(recipe upstream version)}"
 TRIPLET="${TRIPLET:-aarch64-macos}"

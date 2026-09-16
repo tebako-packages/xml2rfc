@@ -5,7 +5,7 @@
 # assets), ready for TEBAKO_RUNTIME_MIRROR=file://<mirror> and the
 # store's `runtimes: {python: …}` pin.
 #
-# Channels (README decision 4 — ONE variable, recipe.yml
+# Channels (README decision 4 — ONE variable, Tebakofile
 # build.runtime.channel):
 #   release        (the default) — the factory's SHARD model (factory
 #                  releases v0.2.0 and up): the release serves per-package
@@ -49,7 +49,7 @@
 # the mirror they produce is a LOCAL staging product (out/, gitignored);
 # no release line ever references a run artifact.
 #
-# Inputs (env, defaults from recipe.yml — the SSOT; this script carries
+# Inputs (env, defaults from Tebakofile — the SSOT; this script carries
 # no version literals):
 #   CHANNEL        release | run-artifacts  (recipe build.runtime.channel)
 #   FACTORY_RUN    the publish.yml run id    (recipe build.runtime.factory_run;
@@ -69,7 +69,7 @@ FEEDSTOCK="$(cd "$(dirname "$0")/.." && pwd)"
 # POSIX path spellings — FEEDSTOCK goes windows-form where cygpath exists
 # (inert on POSIX).
 if command -v cygpath >/dev/null 2>&1; then FEEDSTOCK="$(cygpath -m "$FEEDSTOCK")"; fi
-recipe() { ruby -ryaml -e "puts(YAML.load_file('$FEEDSTOCK/recipe.yml').dig(*ARGV) || '')" "$@"; }
+recipe() { ruby -ryaml -e "puts(YAML.load_file('$FEEDSTOCK/Tebakofile').dig(*ARGV) || '')" "$@"; }
 
 PY_V="${PY_V:-$(recipe build runtime version)}"
 RT_TEBAKO="${RT_TEBAKO:-$(recipe build runtime tebako)}"
@@ -93,7 +93,7 @@ sha256_file() {
 }
 
 # The recipe's POSIX six (the windows-ucrt64 leg waits on the factory's
-# windows mount tier — recipe.yml's platforms comment). <artifact os-arch>
+# windows mount tier — Tebakofile's platforms comment). <artifact os-arch>
 # == the factory's host_id (Platform::HOST_IDS) on every leg — asserted,
 # never assumed. HOST_IDS is overridable: a CI leg stages only its own
 # platform's package.
@@ -101,7 +101,7 @@ HOST_IDS="${HOST_IDS:-linux-gnu-x86_64 linux-gnu-arm64 linux-musl-x86_64 linux-m
 
 case "$CHANNEL" in
   run-artifacts)
-    [ -n "$FACTORY_RUN" ] || die "no factory run pinned (recipe.yml build.runtime.factory_run)"
+    [ -n "$FACTORY_RUN" ] || die "no factory run pinned (Tebakofile build.runtime.factory_run)"
     step "download run artifacts of $FACTORY_REPO run $FACTORY_RUN (python $PY_V)"
     mkdir -p "$RUN_DL"
     for host_id in $HOST_IDS; do
@@ -113,7 +113,7 @@ case "$CHANNEL" in
     done
     ;;
   release)
-    [ -n "$RELEASE_TAG" ] || die "no factory release pinned (recipe.yml build.runtime.release)"
+    [ -n "$RELEASE_TAG" ] || die "no factory release pinned (Tebakofile build.runtime.release)"
     step "download $FACTORY_REPO release $RELEASE_TAG (python $PY_V, tebako $RT_TEBAKO — shard model)"
     mkdir -p "$REL_DL"
     # Enumerate the release's assets once (gh's built-in --jq — no jq
