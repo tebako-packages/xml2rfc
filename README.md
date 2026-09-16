@@ -22,7 +22,7 @@ serves resolution.
    the factory is the single owner; tools/build fails named when the
    sidecar is absent/empty). Upstream's pure-language range
    (`requires_python >= 3.10`, classifiers covering 3.14) is documented
-   in `recipe.yml`, not used as the edge constraint. The staging/exec
+   in `Tebakofile`, not used as the edge constraint. The staging/exec
    line is python **3.14.7** — the one line every leg rides, so the ABI
    edge stays uniform when the windows leg lands (the factory's
    windows-ucrt64 runtime exists only on the 3.14 line; the source
@@ -47,7 +47,7 @@ serves resolution.
    05 §2's download-base shape) — a partial mirror never advertises bytes
    it does not carry. Resolution rides `TEBAKO_RUNTIME_MIRROR` + the
    config.yaml `runtimes:` pin (spec 04 §2's `kind: runtime` registry
-   entries remain planned). The pin is `recipe.yml`'s `build.runtime`
+   entries remain planned). The pin is `Tebakofile`'s `build.runtime`
    block (`channel: release` + `release:` tag). The `run-artifacts`
    channel remains selectable by env override for pre-publish factory
    proof builds ONLY — workflow run artifacts are NOT a durable registry
@@ -93,7 +93,7 @@ A. **lxml VFS compat layer (`templates/lib/python/site-packages/tebako_lxml_vfs.
 
 ## Layout (tebako-packages/index `templates/feedstock/` + conventions)
 
-- `recipe.yml` — upstream pin, pipstage runtime block, native members,
+- `Tebakofile` — upstream pin, pipstage runtime block, native members,
   platforms, the tools sha256 pin block, the ci host/container pins.
 - `manifests/payload.yaml` — the spec 03 manifest template (`@@…@@`
   filled by tools/build).

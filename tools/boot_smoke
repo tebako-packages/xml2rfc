@@ -29,7 +29,7 @@ RUNTIME="${RUNTIME:?set RUNTIME to the tebako runtime exe (tools/build writes ou
 RUNTIME_IMAGE="${RUNTIME_IMAGE:?set RUNTIME_IMAGE to the runtime env .tfs}"
 
 FEEDSTOCK="$(cd "$(dirname "$0")/.." && pwd)"
-recipe() { ruby -ryaml -e "puts(YAML.load_file('$FEEDSTOCK/recipe.yml').dig(*ARGV) || '')" "$@"; }
+recipe() { ruby -ryaml -e "puts(YAML.load_file('$FEEDSTOCK/Tebakofile').dig(*ARGV) || '')" "$@"; }
 PKG_V="${PKG_V:-$(recipe upstream version)}"
 
 echo "== entrypoint assertions (in-process mount via the tfs CLI)"

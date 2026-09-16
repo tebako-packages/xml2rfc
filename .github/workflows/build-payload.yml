@@ -85,10 +85,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Read the toolchain pins (recipe.yml is the SSOT)
+      - name: Read the toolchain pins (Tebakofile is the SSOT)
         run: ruby tools/pins.rb ${{ matrix.tool_platform }} --env >> "$GITHUB_ENV"
 
-      - name: Fetch tebako CLI tools (pinned by recipe.yml, sha256-verified)
+      - name: Fetch tebako CLI tools (pinned by Tebakofile, sha256-verified)
         # tebako + tfs (the imager is `tfs mkimage` — README decision 4's
         # deviation note); tebako-pkg/tebako-shim stay pinned for the
         # future press but are not leg inputs. The pins are cross-checked
@@ -111,7 +111,7 @@ jobs:
           for pair in "$TEBAKO_ASSET:$TEBAKO_SHA256" "$TFS_ASSET:$TFS_SHA256"; do
             asset="${pair%%:*}"; want="${pair##*:}"
             got=$(awk -v a="$asset" '$2 == a {print $1}' SHA256SUMS)
-            [ "$got" = "$want" ] || { echo "::error::pin mismatch for $asset: recipe.yml=$want release=${got:-ABSENT}"; exit 1; }
+            [ "$got" = "$want" ] || { echo "::error::pin mismatch for $asset: Tebakofile=$want release=${got:-ABSENT}"; exit 1; }
           done
           chmod 755 "$TEBAKO_ASSET" "$TFS_ASSET"
           mv "$TEBAKO_ASSET" tebako
@@ -152,7 +152,7 @@ jobs:
               "$CONTAINER" bash -c '
                 set -e
                 tools/gen_closure
-                uid=$(stat -c %u /mnt/w/recipe.yml); gid=$(stat -c %g /mnt/w/recipe.yml)
+                uid=$(stat -c %u /mnt/w/Tebakofile); gid=$(stat -c %g /mnt/w/Tebakofile)
                 chown -R "$uid:$gid" /mnt/w/closure /mnt/w/out 2>/dev/null || true'
           fi
 
@@ -173,7 +173,7 @@ jobs:
               # Root in the container writes root-owned files onto the
               # bind mount; hand them back to the runner user so the host
               # steps (artifact upload) can read them.
-              uid=$(stat -c %u /mnt/w/recipe.yml); gid=$(stat -c %g /mnt/w/recipe.yml)
+              uid=$(stat -c %u /mnt/w/Tebakofile); gid=$(stat -c %g /mnt/w/Tebakofile)
               chown -R "$uid:$gid" /mnt/w/out 2>/dev/null || true'
 
       - name: Boot-smoke + payload checks (host-native legs)
@@ -200,7 +200,7 @@ jobs:
               set -a; . "out/$TRIPLET/runtime.env"; set +a
               TFS=/mnt/w/.tools/tfs TEBAKO=/mnt/w/.tools/tebako \
                 bash tools/boot_smoke "$PAYLOAD_IMG"
-              uid=$(stat -c %u /mnt/w/recipe.yml); gid=$(stat -c %g /mnt/w/recipe.yml)
+              uid=$(stat -c %u /mnt/w/Tebakofile); gid=$(stat -c %g /mnt/w/Tebakofile)
               chown -R "$uid:$gid" /mnt/w/out 2>/dev/null || true'
 
       - name: Stage artifact
@@ -232,7 +232,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Read the toolchain pins (recipe.yml is the SSOT)
+      - name: Read the toolchain pins (Tebakofile is the SSOT)
         run: ruby tools/pins.rb macos-arm64 --env >> "$GITHUB_ENV"
 
       - name: Guard — the wrong line must differ from the recipe line
@@ -259,7 +259,7 @@ jobs:
           for pair in "$TEBAKO_ASSET:$TEBAKO_SHA256" "$SHIM_ASSET:$SHIM_SHA256"; do
             asset="${pair%%:*}"; want="${pair##*:}"
             got=$(awk -v a="$asset" '$2 == a {print $1}' SHA256SUMS)
-            [ "$got" = "$want" ] || { echo "::error::pin mismatch for $asset: recipe.yml=$want release=${got:-ABSENT}"; exit 1; }
+            [ "$got" = "$want" ] || { echo "::error::pin mismatch for $asset: Tebakofile=$want release=${got:-ABSENT}"; exit 1; }
           done
           chmod 755 "$TEBAKO_ASSET" "$SHIM_ASSET"
           mv "$TEBAKO_ASSET" tebako
@@ -346,9 +346,9 @@ jobs:
             mv "$d"* "out/$p/"
             rmdir "$d"
           done
-      - name: Read the toolchain pins (recipe.yml is the SSOT)
+      - name: Read the toolchain pins (Tebakofile is the SSOT)
         run: ruby tools/pins.rb macos-arm64 --env >> "$GITHUB_ENV"
-      - name: Fetch the publisher (pinned by recipe.yml, sha256-verified)
+      - name: Fetch the publisher (pinned by Tebakofile, sha256-verified)
         run: |
           set -euo pipefail
           mkdir -p .packager
@@ -378,7 +378,7 @@ jobs:
           printf 'runtimes:\n  python:\n    version: "%s"\n    tebako: "%s"\n' \
             "$RUNTIME_PYTHON" "$RUNTIME_TEBAKO" >> "$TEBAKO_HOME/config.yaml"
       - name: Publish payloads + registry
-        # Signing (recipe.yml's signing: block; spec 09 §9): SIGNING_KEYID
+        # Signing (Tebakofile's signing: block; spec 09 §9): SIGNING_KEYID
         # flows from the pins step's GITHUB_ENV export; the CI signing
         # subkey arrives as org secret TEBAKO_CI_SIGNING_KEY and is staged
         # into the publisher home's keys/ below. Declared-signing + absent

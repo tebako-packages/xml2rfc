@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# pins.rb — read recipe.yml's `tools:` block (the repo's toolchain pin
+# pins.rb — read Tebakofile's `tools:` block (the repo's toolchain pin
 # SSOT) and emit KEY=VALUE lines for $GITHUB_ENV. The workflows carry NO
 # version or digest literals — every value flows from the recipe.
 #
@@ -25,11 +25,11 @@ def die(msg)
 end
 
 root = File.expand_path("..", __dir__)
-recipe = YAML.load_file(File.join(root, "recipe.yml"))
+recipe = YAML.load_file(File.join(root, "Tebakofile"))
 tools = recipe.fetch("tools")
 release = tools.fetch("release")
 version = release.sub(/\Av/, "")
-die "recipe.yml tools.sha256 missing" unless tools["sha256"].is_a?(Hash)
+die "Tebakofile tools.sha256 missing" unless tools["sha256"].is_a?(Hash)
 
 runtime = recipe.fetch("build").fetch("runtime")
 
@@ -37,7 +37,7 @@ pairs = {
   "TEBAKO_RELEASE" => release,
   "PKG_NAME" => recipe.fetch("name"),
   "PKG_VERSION" => recipe.dig("upstream", "version") ||
-                   die("recipe.yml upstream.version missing"),
+                   die("Tebakofile upstream.version missing"),
   # The runtime channel (README decision 4): the factory release tag the
   # release channel stages from (the owner's publish decision landed
   # 2026-09-06 — tebako-runtime-python v0.1.0 is live). The pre-publish
@@ -76,7 +76,7 @@ if ARGV.include?("--matrix")
   hosts = ci.fetch("hosts")
   containers = ci["containers"] || {}
   include = recipe.fetch("platforms").map do |triplet|
-    host = hosts[triplet] or die "recipe.yml ci.hosts has no host for #{triplet}"
+    host = hosts[triplet] or die "Tebakofile ci.hosts has no host for #{triplet}"
     tp = TOOL_PLATFORM[triplet] or die "pins.rb: unknown triplet #{triplet}"
     {
       triplet: triplet,
@@ -94,7 +94,7 @@ if ARGV.include?("--payload-args")
   # recipe platforms (no triplet/artifact literals in the workflow):
   #   --payload <triplet>=out/<triplet>/<name>-<version>-<asset-platform>.tfs ...
   name = recipe.fetch("name")
-  ver = recipe.dig("upstream", "version") or die "recipe.yml upstream.version missing"
+  ver = recipe.dig("upstream", "version") or die "Tebakofile upstream.version missing"
   puts recipe.fetch("platforms").map { |t|
     tp = TOOL_PLATFORM[t] or die "pins.rb: unknown triplet #{t}"
     "--payload #{t}=out/#{t}/#{name}-#{ver}-#{tp}.tfs"
@@ -106,7 +106,7 @@ platform = ARGV[0] or die "usage: pins.rb <tool-platform> [--env]"
 { "tebako" => "TEBAKO", "tfs" => "TFS", "tebako-pkg" => "TEBAKO_PKG",
   "tebako-shim" => "SHIM" }.each do |tool, key|
   sha = tools.dig("sha256", tool, platform) or
-    die "recipe.yml: no tools.sha256.#{tool}.#{platform} pin"
+    die "Tebakofile: no tools.sha256.#{tool}.#{platform} pin"
   exe = ""
   pairs["#{key}_ASSET"] = "#{tool}-#{version}-#{platform}#{exe}"
   pairs["#{key}_SHA256"] = sha

@@ -10,7 +10,7 @@
 # line's ABI tag (derived from the recipe's python pin, never a literal)
 # on that triplet can install. Every artifact is then hashed into the lock.
 #
-# Native members (recipe.yml build.native_members: lxml, markupsafe,
+# Native members (Tebakofile build.native_members: lxml, markupsafe,
 # pyyaml) must come down as WHEELS whose platform tag matches the leg
 # (manylinux for linux-gnu, musllinux for linux-musl, macosx_* for
 # macos). Source builds of native members are NEVER a feedstock path
@@ -26,11 +26,11 @@
 #   tools/gen_closure --all                            # every recipe platform
 #                                                       # (needs every staged runtime — CI shape)
 # Env: MIRROR (tools/stage_runtime's output), VERSION, RUN_DL… —
-# defaults flow from recipe.yml.
+# defaults flow from Tebakofile.
 set -euo pipefail
 
 FEEDSTOCK="$(cd "$(dirname "$0")/.." && pwd)"
-recipe() { ruby -ryaml -e "puts(YAML.load_file('$FEEDSTOCK/recipe.yml').dig(*ARGV) || '')" "$@"; }
+recipe() { ruby -ryaml -e "puts(YAML.load_file('$FEEDSTOCK/Tebakofile').dig(*ARGV) || '')" "$@"; }
 
 VERSION="${VERSION:-$(recipe upstream version)}"
 PY_V="${PY_V:-$(recipe build runtime version)}"
@@ -109,7 +109,7 @@ one_leg() {
     # fail-closed audit of TODO.python/04 item 1), reported by the staged
     # runtime itself (pip's vendored certifi carries the trust roots).
     TEBAKO_RUNTIME_IMAGE="$img" "$exe" "$FEEDSTOCK/tools/pypi_offers.py" \
-      $(ruby -ryaml -e 'puts YAML.load_file(ARGV[0]).dig("build", "native_members").join(" ")' "$FEEDSTOCK/recipe.yml") \
+      $(ruby -ryaml -e 'puts YAML.load_file(ARGV[0]).dig("build", "native_members").join(" ")' "$FEEDSTOCK/Tebakofile") \
       "$VERSION" || true
     die "pip resolution failed for $triplet — no matching wheel for at least one member (see above)"
   fi
@@ -131,7 +131,7 @@ one_leg() {
   # leg's tag set (pip's accept-list already guarantees it — this asserts
   # the closure never silently drops a native member to another leg's
   # problem).
-  local members; members="$(ruby -ryaml -e 'puts YAML.load_file(ARGV[0]).dig("build", "native_members").join(" ")' "$FEEDSTOCK/recipe.yml")"
+  local members; members="$(ruby -ryaml -e 'puts YAML.load_file(ARGV[0]).dig("build", "native_members").join(" ")' "$FEEDSTOCK/Tebakofile")"
   local m
   for m in $members; do
     # wheel filenames carry the normalized project name (_ for -)
@@ -144,7 +144,7 @@ one_leg() {
 }
 
 if [ "${1:-}" = "--all" ]; then
-  for triplet in $(ruby -ryaml -e 'puts YAML.load_file(ARGV[0]).fetch("platforms").join(" ")' "$FEEDSTOCK/recipe.yml"); do
+  for triplet in $(ruby -ryaml -e 'puts YAML.load_file(ARGV[0]).fetch("platforms").join(" ")' "$FEEDSTOCK/Tebakofile"); do
     one_leg "$triplet"
   done
 else
