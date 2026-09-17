@@ -226,7 +226,7 @@ jobs:
           path: out/${{ matrix.triplet }}/
 
   wrong-line-refusal:
-    name: wrong-line refusal (spec 05 §5 acceptance)
+    name: wrong-line refusal (acceptance)
     # The resolver contract gate: dispatching the PUBLISHED payload (a
     # native-extension build locked to the recipe's ABI line) with only a
     # DIFFERENT python line available must fail with the named exit-69
