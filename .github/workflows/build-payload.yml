@@ -136,8 +136,12 @@ jobs:
           lock="closure/$PKG_VERSION-$TRIPLET.txt"
           if [ -s "$lock" ]; then
             echo "committed closure present: $lock"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "::error::committed closure lock $lock is missing — tags never regenerate (run any branch build, download the leg's closure-lock artifact, commit it)"
+            exit 1
           else
             tools/gen_closure
+            echo "LOCK_GENERATED=$lock" >> "$GITHUB_ENV"
           fi
 
       - name: Generate the closure (container legs; only when the committed lock is absent)
@@ -147,6 +151,9 @@ jobs:
           lock="closure/$PKG_VERSION-$TRIPLET.txt"
           if [ -s "$lock" ]; then
             echo "committed closure present: $lock"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "::error::committed closure lock $lock is missing — tags never regenerate (run any branch build, download the leg's closure-lock artifact, commit it)"
+            exit 1
           else
             docker run --rm -e TRIPLET -v "$GITHUB_WORKSPACE:/mnt/w" -w /mnt/w \
               "$CONTAINER" bash -c '
@@ -154,7 +161,16 @@ jobs:
                 tools/gen_closure
                 uid=$(stat -c %u /mnt/w/Tebakofile); gid=$(stat -c %g /mnt/w/Tebakofile)
                 chown -R "$uid:$gid" /mnt/w/closure /mnt/w/out 2>/dev/null || true'
+            echo "LOCK_GENERATED=$lock" >> "$GITHUB_ENV"
           fi
+
+      - name: Upload a regenerated closure lock (branch runs only)
+        if: env.LOCK_GENERATED != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: closure-lock-${{ matrix.triplet }}
+          path: ${{ env.LOCK_GENERATED }}
+          retention-days: 30
 
       - name: Build the payload (host-native legs)
         if: matrix.container == ''
@@ -417,7 +433,9 @@ jobs:
       # Idempotent across re-runs of the same tag.
       - name: Publish the registry entry via pull request
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The CI PAT authors the PR: a GITHUB_TOKEN-authored PR's checks
+          # sit on the approval queue until they expire red.
+          GH_TOKEN: ${{ secrets.TEBAKO_CI_PAT_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           git config user.name "tebako-ci"
