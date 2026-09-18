@@ -75,7 +75,12 @@ else
   for trees_dir in "${TEMP:-/tmp}"/tebako-exec-*/trees "${LOCALAPPDATA:-/nonexistent}/Temp"/tebako-exec-*/trees /c/Users/*/AppData/Local/Temp/tebako-exec-*/trees; do
     [ -d "$trees_dir" ] || continue
     echo "-- $trees_dir"
-    find "$trees_dir" -maxdepth 3 | head -40
+    for d in "$trees_dir"/*/; do
+      [ -d "$d" ] || continue
+      echo "-- tree $d:"
+      ls -la "$d" | head -12
+      [ -d "$d/bin" ] && { echo "-- $d/bin:"; ls -la "$d/bin" | head -10; }
+    done
   done
   exit 1
 fi
