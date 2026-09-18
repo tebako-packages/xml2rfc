@@ -138,8 +138,11 @@ rm -rf "$TARGET"
 # that variable, and init dies on the bare exe-side prefix. Isolation
 # from ambient PYTHON* state is the runtime driver's job, and it scrubs
 # before the interpreter initializes.
+# tools/pip_bootstrap.py forces BLOCKING connects under the staged
+# windows runtime (the msys2-cpython build breaks urllib3's non-blocking
+# connect: WinError 10035 on every fetch); posix is a no-op passthrough.
 TEBAKO_RUNTIME_IMAGE="$RT_IMAGE" \
-  "$RT_EXE" -m pip install \
+  "$RT_EXE" "$FEEDSTOCK/tools/pip_bootstrap.py" install \
   --target "$TARGET" --no-cache-dir --require-hashes \
   -r "$REQS" > "$WORK/pip.log" 2>&1 || {
   tail -30 "$WORK/pip.log" >&2
