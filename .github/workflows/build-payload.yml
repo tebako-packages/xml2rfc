@@ -4,18 +4,18 @@ name: build-payload
 #
 # The first python payload (kind: app on the tebako-runtime-python
 # 3.14.7 line — the one line every leg rides, so the ABI edge is uniform
-# when the windows leg lands: the factory's windows-ucrt64 runtime exists
-# only on the 3.14 line). Six POSIX legs; the windows-ucrt leg waits on
-# the factory's windows mount tier (the runtime's fs TU answers any mount
-# with a named exit 69 — a windows payload could not execute on its own
-# platform until then).
+# across the matrix: the factory's windows-ucrt64 runtime exists only on
+# the 3.14 line). Six POSIX legs plus the windows-ucrt leg, which rides
+# the factory's v0.2.1 materialize tier (`windows_boot: materialize` on
+# the msys env image — a windows payload boots on its own platform).
 #
 # Leg grammar (the runtime factory's _build-platform.yml): the linux legs
 # run on the ubuntu host; the musl legs docker-run the pinned
 # tpkg-builder image per triplet-matched step (the musl image is
 # alpine-based and node actions cannot run on musl — the job-level
 # container: form is out); the gnu legs are host-native (this feedstock
-# compiles nothing — pipstage fetches wheels). macos legs runner-native.
+# compiles nothing — pipstage fetches wheels). macos + windows legs
+# runner-native.
 #
 # Runtime staging (README decision 4): each leg stages its platform's
 # runtime package from the pinned factory release TAG into a file://
@@ -51,6 +51,15 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+
+# Every run: block is bash (set -euo pipefail). On windows-latest the
+# default shell is pwsh and every step would break — git-bash on the
+# windows runner provides curl/sha256sum/ruby. No step carries a
+# per-step shell: override; the musl docker arms stay triplet-gated (the
+# windows leg never enters them).
+defaults:
+  run:
+    shell: bash
 
 jobs:
   plan:

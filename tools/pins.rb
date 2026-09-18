@@ -9,8 +9,8 @@
 #
 # <tool-platform> is the tebako release asset platform (macos-arm64,
 # macos-x86_64, linux-gnu-x86_64, linux-gnu-arm64, linux-musl-x86_64,
-# linux-musl-arm64). Unknown platform / missing pin is a named error,
-# never a guess (spec 00 §9).
+# linux-musl-arm64, windows-ucrt64). Unknown platform / missing pin is a
+# named error, never a guess (spec 00 §9).
 #
 # NEVER emit a bare TEBAKO_VERSION: the shim/store grammar uses that name
 # for the RUNTIME's tebako line in other repos' tooling; here the tools
@@ -18,6 +18,11 @@
 # line is RUNTIME_TEBAKO (recipe build.runtime.tebako).
 
 require "yaml"
+
+# NATIVE windows ruby's text-mode stdout terminates lines with CRLF —
+# the --env output is appended to $GITHUB_ENV, where a trailing \r taints
+# every value. binmode at the source (the stage_runtime shield).
+$stdout.binmode
 
 def die(msg)
   warn "pins.rb: #{msg}"
@@ -56,7 +61,8 @@ pairs = {
 }
 
 # triplet -> the tebako release-asset platform (spec 03 §3; identical to
-# the factory's host_id on the POSIX six — tools/build's ASSET_PLATFORM).
+# the factory's host_id on the POSIX six AND windows-ucrt64 —
+# tools/build's ASSET_PLATFORM).
 TOOL_PLATFORM = {
   "x86_64-linux-gnu" => "linux-gnu-x86_64",
   "aarch64-linux-gnu" => "linux-gnu-arm64",
@@ -64,6 +70,7 @@ TOOL_PLATFORM = {
   "aarch64-linux-musl" => "linux-musl-arm64",
   "x86_64-macos" => "macos-x86_64",
   "aarch64-macos" => "macos-arm64",
+  "x86_64-windows-ucrt" => "windows-ucrt64",
 }.freeze
 
 if ARGV.include?("--matrix")
@@ -107,7 +114,9 @@ platform = ARGV[0] or die "usage: pins.rb <tool-platform> [--env]"
   "tebako-shim" => "SHIM" }.each do |tool, key|
   sha = tools.dig("sha256", tool, platform) or
     die "Tebakofile: no tools.sha256.#{tool}.#{platform} pin"
-  exe = ""
+  # The windows release assets carry the .exe suffix; POSIX assets are
+  # suffixless. No other spelling is guessed.
+  exe = platform.start_with?("windows-") ? ".exe" : ""
   pairs["#{key}_ASSET"] = "#{tool}-#{version}-#{platform}#{exe}"
   pairs["#{key}_SHA256"] = sha
 end

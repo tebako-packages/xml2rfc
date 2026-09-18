@@ -30,6 +30,10 @@
 set -euo pipefail
 
 FEEDSTOCK="$(cd "$(dirname "$0")/.." && pwd)"
+# Native windows tools (ruby, the runtime exe) cannot read Git Bash's
+# POSIX path spellings — FEEDSTOCK goes windows-form where cygpath exists
+# (inert on POSIX; the stage_runtime pattern).
+if command -v cygpath >/dev/null 2>&1; then FEEDSTOCK="$(cygpath -m "$FEEDSTOCK")"; fi
 recipe() { ruby -ryaml -e "puts(YAML.load_file('$FEEDSTOCK/Tebakofile').dig(*ARGV) || '')" "$@"; }
 
 VERSION="${VERSION:-$(recipe upstream version)}"
@@ -50,6 +54,7 @@ host_id_of() {
     aarch64-linux-musl) echo linux-musl-arm64 ;;
     x86_64-macos)      echo macos-x86_64 ;;
     aarch64-macos)     echo macos-arm64 ;;
+    x86_64-windows-ucrt) echo windows-ucrt64 ;;
     *) die "unknown TRIPLET: $1" ;;
   esac
 }
@@ -72,6 +77,11 @@ platform_tags() {
       echo "macosx_15_0_x86_64 macosx_14_0_x86_64 macosx_13_0_x86_64 macosx_12_0_x86_64 macosx_11_0_x86_64 macosx_10_16_x86_64 macosx_10_13_x86_64 macosx_10_9_x86_64 macosx_15_0_universal2 macosx_14_0_universal2 macosx_13_0_universal2 macosx_12_0_universal2 macosx_11_0_universal2 macosx_10_16_universal2 macosx_10_9_universal2" ;;
     aarch64-macos)
       echo "macosx_15_0_arm64 macosx_14_0_arm64 macosx_13_0_arm64 macosx_12_0_arm64 macosx_11_0_arm64 macosx_15_0_universal2 macosx_14_0_universal2 macosx_13_0_universal2 macosx_12_0_universal2 macosx_11_0_universal2 macosx_10_16_universal2 macosx_10_9_universal2" ;;
+    x86_64-windows-ucrt)
+      # PyPI's windows x86_64 tag (the ucrt runtime is a stock cpython
+      # win_amd64 ABI consumer — the native members stage from win_amd64
+      # cp314 wheels).
+      echo "win_amd64" ;;
     *) die "unknown TRIPLET: $1" ;;
   esac
 }
@@ -79,14 +89,23 @@ platform_tags() {
 one_leg() {
   local triplet="$1"
   local host_id; host_id="$(host_id_of "$triplet")"
-  local exe="$MIRROR/v$RT_TEBAKO/tebako-runtime-$RT_TEBAKO-$PY_V-$host_id"
-  local img="$exe.tfs"
+  # The windows runtime exe carries the .exe suffix (the env image keeps
+  # the suffixless stem on every platform).
+  local exe_sfx=""
+  case "$host_id" in windows-*) exe_sfx=".exe" ;; esac
+  local exe="$MIRROR/v$RT_TEBAKO/tebako-runtime-$RT_TEBAKO-$PY_V-$host_id$exe_sfx"
+  local img="$MIRROR/v$RT_TEBAKO/tebako-runtime-$RT_TEBAKO-$PY_V-$host_id.tfs"
   [ -x "$exe" ] || die "no staged runtime for $triplet: $exe (run tools/stage_runtime first)"
   [ -f "$img" ] || die "no staged runtime image for $triplet: $img"
 
   local out_file="$FEEDSTOCK/closure/$VERSION-$triplet.txt"
   local dest; dest="$(mktemp -d)/wheels"
   mkdir -p "$dest"
+  # pip runs INSIDE the native windows runtime exe — it cannot read Git
+  # Bash's POSIX spellings, so --dest goes windows-form where cygpath
+  # exists (inert on POSIX). The hashing subshell below cd's into the
+  # same spelling, which MSYS2 coreutils accept.
+  if command -v cygpath >/dev/null 2>&1; then dest="$(cygpath -m "$dest")"; fi
 
   # The wheel ABI tag of the staging line (3.14.x -> cp314) — derived from
   # the recipe's pin, never a literal.

@@ -37,6 +37,10 @@
 set -euo pipefail
 
 FEEDSTOCK="$(cd "$(dirname "$0")/.." && pwd)"
+# Native windows tools (ruby, the runtime exe, the tfs CLI) cannot read
+# Git Bash's POSIX path spellings — FEEDSTOCK goes windows-form where
+# cygpath exists (inert on POSIX; the stage_runtime pattern).
+if command -v cygpath >/dev/null 2>&1; then FEEDSTOCK="$(cygpath -m "$FEEDSTOCK")"; fi
 recipe() { ruby -ryaml -e "puts(YAML.load_file('$FEEDSTOCK/Tebakofile').dig(*ARGV) || '')" "$@"; }
 
 VERSION="${VERSION:-$(recipe upstream version)}"
@@ -61,8 +65,9 @@ sha256_file() {
 }
 
 # triplet -> host_id (Platform::HOST_IDS) + the release-asset platform
-# form (spec 03 §3) — identical on the POSIX six; kept as two names so a
-# divergence fails loudly instead of mis-naming an artifact.
+# form (spec 03 §3) — identical on the POSIX six and windows-ucrt64;
+# kept as two names so a divergence fails loudly instead of mis-naming
+# an artifact.
 case "$TRIPLET" in
   x86_64-linux-gnu)  HOST_ID=linux-gnu-x86_64 ;;
   aarch64-linux-gnu) HOST_ID=linux-gnu-arm64 ;;
@@ -70,23 +75,29 @@ case "$TRIPLET" in
   aarch64-linux-musl) HOST_ID=linux-musl-arm64 ;;
   x86_64-macos)      HOST_ID=macos-x86_64 ;;
   aarch64-macos)     HOST_ID=macos-arm64 ;;
+  x86_64-windows-ucrt) HOST_ID=windows-ucrt64 ;;
   *) die "unknown TRIPLET: $TRIPLET" ;;
 esac
 ASSET_PLATFORM="$HOST_ID"
+# The windows runtime exe carries the .exe suffix (the env image and the
+# .abi sidecar keep the suffixless stem on every platform).
+EXE_SFX=""
+case "$HOST_ID" in windows-*) EXE_SFX=".exe" ;; esac
 
 [ -f "$CLOSURE" ] || die "no closure file for $TRIPLET: $CLOSURE (run tools/gen_closure TRIPLET=$TRIPLET)"
 mkdir -p "$WORK" "$OUT"
 
 # ------------------------------------------------------- staged runtime
 step "staged tebako python $PY_V runtime (tebako $RT_TEBAKO, $HOST_ID)"
-RT_EXE="$MIRROR/v$RT_TEBAKO/tebako-runtime-$RT_TEBAKO-$PY_V-$HOST_ID"
-RT_IMAGE="$RT_EXE.tfs"
+RT_STEM="$MIRROR/v$RT_TEBAKO/tebako-runtime-$RT_TEBAKO-$PY_V-$HOST_ID"
+RT_EXE="$RT_STEM$EXE_SFX"
+RT_IMAGE="$RT_STEM.tfs"
 [ -x "$RT_EXE" ] || die "no staged runtime exe: $RT_EXE (run tools/stage_runtime first)"
 [ -f "$RT_IMAGE" ] || die "no staged runtime image: $RT_IMAGE"
 # The ABI edge (spec 05 §5) flows from the runtime's OWN .abi sidecar —
 # the factory is the single owner; a missing/empty sidecar is a named
 # error, never a re-derived guess.
-ABI_FILE="$MIRROR/v$RT_TEBAKO/tebako-runtime-$RT_TEBAKO-$PY_V-$HOST_ID.abi"
+ABI_FILE="$RT_STEM.abi"
 [ -f "$ABI_FILE" ] || die "no abi sidecar next to the staged runtime: $ABI_FILE"
 ABI="$(tr -d '[:space:]' < "$ABI_FILE")"
 [ -n "$ABI" ] || die "empty abi sidecar: $ABI_FILE"
