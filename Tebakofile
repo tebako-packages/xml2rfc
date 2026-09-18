@@ -27,10 +27,12 @@ build:
                            # rides — the ABI edge stays uniform: the factory's
                            # windows-ucrt64 leg exists only for this line, the
                            # source factory ships no 3.13 windows-msys asset)
-    tebako: "0.2.2"        # the runtime package's <ver> (the factory's
-                           # VERSION). 0.2.2 is the materialize-tier line
+    tebako: "0.2.3"        # the runtime package's <ver> (the factory's
+                           # VERSION). 0.2.3 is the materialize-tier line
                            # that BOOTS on windows (the fs TU follows the
-                           # rewired TEBAKO_MOUNT_ROOT):
+                           # rewired TEBAKO_MOUNT_ROOT) AND ships the msys
+                           # _ctypes extension (libffi static) the xml2rfc
+                           # closure imports at boot:
                            # the shard model (per-package manifest shards +
                            # per-asset .sha256 sidecars + OpenPGP .asc
                            # signatures, NO monolithic manifest.json /
@@ -51,7 +53,7 @@ build:
     # PLANNED). NEVER a hand-installed python. The run-artifacts channel
     # remains selectable by env override for pre-publish factory builds only.
     channel: release       # release (published factory tag) | run-artifacts (pre-publish proof builds)
-    release: "v0.2.2"      # the factory release tag (release channel)
+    release: "v0.2.3"      # the factory release tag (release channel)
   # The closure's native members (lxml — C extension, per-triplet wheels,
   # musl = musllinux; markupsafe / pyyaml optional C speedups): staged
   # from PyPI wheels matching the staging runtime's ABI tag (cp314) and
@@ -62,7 +64,7 @@ build:
 
 platforms:
   # the tebako-runtime-python matrix's POSIX six plus the windows-ucrt
-  # leg, which rides the factory's v0.2.2 materialize tier
+  # leg, which rides the factory's v0.2.3 materialize tier
   # (`windows_boot: materialize` on the msys env image — the driver
   # extracts the mounted+verified images into the exec cache, so a
   # windows payload boots on its own platform). The line choice (3.14.7)
