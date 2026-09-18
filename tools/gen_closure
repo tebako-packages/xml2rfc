@@ -183,7 +183,13 @@ one_leg() {
     echo "# resolved xml2rfc==$VERSION against PyPI for platform tags of $triplet"
     (cd "$dest" && for f in *.whl; do
       if command -v sha256sum >/dev/null 2>&1; then sha256sum "$f"; else shasum -a 256 "$f"; fi
-    done | sort)
+    # MSYS2 coreutils default to BINARY mode ("<hash> *<name>", one space
+    # + asterisk); GNU on linux emits text mode ("<hash>  <name>", two
+    # spaces). Canonicalize to the two-space form so the native-member
+    # assertion (and any sha256sum -c consumer) sees one shape on every
+    # platform. A no-op for text-mode output (wheel names cannot start
+    # with `*`).
+    done | sed -E 's/^([0-9a-fA-F]{64}) \*/\1  /' | sort)
   } > "$out_file"
 
   # Native-member wheel assertion (the recipe's native_members): each must
