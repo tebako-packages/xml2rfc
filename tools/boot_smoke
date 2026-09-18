@@ -66,7 +66,10 @@ if command -v cygpath >/dev/null 2>&1; then X="$(cygpath -m "$X")"; fi
 [ -f "$X/bin/xml2rfc" ] || { echo "extracted entrypoint missing"; exit 1; }
 
 echo "== spec 26 payload checks (tebako check, the press-time moment)"
-"$TEBAKO" check "$IMG" --runtime "$RUNTIME" --runtime-image "$RUNTIME_IMAGE"
+# TEBAKO_DEBUG_TFS: the materialize trace (ok/error per extracted file) —
+# the windows tree-boot round-trips read this when an entrypoint fails to
+# land in the exec tree.
+TEBAKO_DEBUG_TFS=1 "$TEBAKO" check "$IMG" --runtime "$RUNTIME" --runtime-image "$RUNTIME_IMAGE"
 
 echo "== manual spec-17 dispatch smoke (the spec-32 spawn wire)"
 out="$(TEBAKO_RUNTIME_IMAGE="$RUNTIME_IMAGE" \
