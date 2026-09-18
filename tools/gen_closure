@@ -139,12 +139,24 @@ one_leg() {
     # resolver-independent.
     if [ "$triplet" = x86_64-windows-ucrt ] && command -v python >/dev/null 2>&1; then
       step "in-exe pip could not connect (msys2 WinError 10035) — the runner's python re-resolves the SAME constraint set for $triplet (explicit --abi $cp_tag)"
+      # The fallback dest lives under the repo root in the SAME windows
+      # spelling every native tool in this job already uses successfully
+      # (mktemp's MSYS /tmp view and the native python's view of it are
+      # not guaranteed to be the same directory).
+      local fdest="$PWD/.closure-wheels-$$"
+      mkdir -p "$fdest"
+      command -v cygpath >/dev/null 2>&1 && fdest="$(cygpath -m "$fdest")"
+      step "fallback dest: $fdest (python: $(command -v python) $(python -V 2>&1))"
       if python -m pip download \
-          --dest "$dest" --no-cache-dir --only-binary=:all: \
+          --dest "$fdest" --no-cache-dir --only-binary=:all: \
           --python-version "${PY_V%.*}" --implementation cp \
           --abi "$cp_tag" \
           "${platform_args[@]}" \
           "xml2rfc==$VERSION" > "$log" 2>&1; then
+        local got; got="$(ls "$fdest"/*.whl 2>/dev/null | wc -l | tr -d ' ')"
+        [ "$got" -gt 0 ] || { tail -20 "$log" >&2; die "fallback downloaded 0 wheels — see pip's log above"; }
+        step "fallback resolved $got wheels"
+        dest="$fdest"
         resolved_by="the runner's python (named fallback: the staged runtime's pip hits the msys2 WinError 10035 connect pathology)"
       else
         cat "$log" >&2
