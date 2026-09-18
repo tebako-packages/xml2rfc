@@ -132,8 +132,14 @@ echo "locked requirements: $(grep -c . "$REQS")"
 step "pip install --target with the STAGED runtime's own interpreter"
 TARGET="$WORK/stage"
 rm -rf "$TARGET"
+# NO -E here: the staged runtime's stdlib rides the DRIVER-set PYTHONHOME
+# (the materialize tier extracts the env image and hands the tree over
+# through the environment) — `-E` makes the interpreter ignore exactly
+# that variable, and init dies on the bare exe-side prefix. Isolation
+# from ambient PYTHON* state is the runtime driver's job, and it scrubs
+# before the interpreter initializes.
 TEBAKO_RUNTIME_IMAGE="$RT_IMAGE" \
-  "$RT_EXE" -E -m pip install \
+  "$RT_EXE" -m pip install \
   --target "$TARGET" --no-cache-dir --require-hashes \
   -r "$REQS" > "$WORK/pip.log" 2>&1 || {
   tail -30 "$WORK/pip.log" >&2
