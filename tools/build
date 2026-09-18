@@ -172,7 +172,9 @@ PAYLOAD="$WORK/payload"
 rm -rf "$PAYLOAD"
 mkdir -p "$PAYLOAD/bin" "$PAYLOAD/lib/python"
 mv "$TARGET" "$PAYLOAD/lib/python/site-packages"
-cp "$FEEDSTOCK/templates/bin/xml2rfc" "$PAYLOAD/bin/xml2rfc"
+# tr -d '\r': the checkout may be CRLF on windows and a shebang line
+# ending in CR fails exec ("bad interpreter").
+tr -d '\r' < "$FEEDSTOCK/templates/bin/xml2rfc" > "$PAYLOAD/bin/xml2rfc"
 chmod 755 "$PAYLOAD/bin/xml2rfc"
 # The lxml VFS compat layer (authored payload content, not an upstream
 # patch) sits next to the closure; templates/ is the ONE source.
@@ -200,6 +202,9 @@ mkdir -p "$PAYLOAD/__tpkg__"
 # blob_sha256's fixed-point rule (spec 03 §7): the image cannot carry its
 # own digest — the embedded copy keeps the zero placeholder; the sibling
 # manifest (below) carries the real one for the release/registry tier.
+# git may check the manifest out with CRLF on windows — the embedded
+# copy must be LF or the entrypoint paths carry a trailing CR and the
+# driver opens "bin/xml2rfc\r" (invisible in the rendered log).
 sed -e "s|@@VERSION@@|$VERSION|g" \
     -e "s|@@CREATED@@|$(date -u +%Y-%m-%dT%H:%M:%SZ)|" \
     -e "s|@@FEEDSTOCK_SHA@@|$(git -C "$FEEDSTOCK" rev-parse HEAD)|" \
@@ -207,7 +212,7 @@ sed -e "s|@@VERSION@@|$VERSION|g" \
     -e "s|@@ABI@@|$ABI|" \
     -e "s|^  platforms: \[.*\]|  platforms: [$TRIPLET]|" \
     -e "s|@@BLOB_SHA256@@|0000000000000000000000000000000000000000000000000000000000000000|" \
-    "$FEEDSTOCK/manifests/payload.yaml" > "$MAN_EMBED"
+    "$FEEDSTOCK/manifests/payload.yaml" | tr -d '\r' > "$MAN_EMBED"
 grep -q '@@' "$MAN_EMBED" && die "unfilled @@…@@ placeholders remain in the embedded manifest"
 echo "embedded manifest: $MAN_EMBED"
 
