@@ -141,9 +141,22 @@ rm -rf "$TARGET"
 # tools/pip_bootstrap.py forces BLOCKING connects under the staged
 # windows runtime (the msys2-cpython build breaks urllib3's non-blocking
 # connect: WinError 10035 on every fetch); posix is a no-op passthrough.
+# The wheel-tag arguments: POSIX legs install natively (the staged
+# interpreter IS the closure's ABI). The windows-ucrt leg stages
+# win_amd64 cp<PY> wheels with the cross-env spelling — explicit tags
+# bypass the msys interpreter's own (mingw) tag set, which does not
+# admit the win_amd64 binaries the closure locks; without them pip
+# falls back to the sdist and the hash audit dies. --only-binary keeps
+# pip on the locked wheels (source builds are never a feedstock path).
+cross_args=()
+[ "$TRIPLET" = x86_64-windows-ucrt ] && {
+  cp_tag="cp$(echo "${PY_V%.*}" | tr -d '.')"
+  cross_args=(--only-binary=:all: --platform win_amd64 --python-version "${PY_V%.*}" --implementation cp --abi "$cp_tag")
+}
 TEBAKO_RUNTIME_IMAGE="$RT_IMAGE" \
   "$RT_EXE" "$FEEDSTOCK/tools/pip_bootstrap.py" install \
   --target "$TARGET" --no-cache-dir --require-hashes \
+  ${cross_args[@]+"${cross_args[@]}"} \
   -r "$REQS" > "$WORK/pip.log" 2>&1 || {
   tail -30 "$WORK/pip.log" >&2
   die "pip staging FAILED (full log: $WORK/pip.log)"
