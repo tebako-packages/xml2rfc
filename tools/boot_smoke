@@ -72,7 +72,7 @@ if TEBAKO_DEBUG_TFS=1 "$TEBAKO" check "$IMG" --runtime "$RUNTIME" --runtime-imag
   echo "spec-26 checks: OK"
 else
   echo "== spec-26 checks FAILED — exec-cache forensics:"
-  for trees_dir in "${TEMP:-/tmp}"/tebako-exec-*/trees "$LOCALAPPDATA/Temp"/tebako-exec-*/trees /c/Users/*/AppData/Local/Temp/tebako-exec-*/trees; do
+  for trees_dir in "${TEMP:-/tmp}"/tebako-exec-*/trees "${LOCALAPPDATA:-/nonexistent}/Temp"/tebako-exec-*/trees /c/Users/*/AppData/Local/Temp/tebako-exec-*/trees; do
     [ -d "$trees_dir" ] || continue
     echo "-- $trees_dir"
     find "$trees_dir" -maxdepth 3 | head -40
