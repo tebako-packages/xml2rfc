@@ -184,6 +184,9 @@ cp "$FEEDSTOCK/templates/lib/python/site-packages/tebako_lxml_vfs.py" \
 # the console script of the same name (drift = named error).
 ruby -ryaml -e 'YAML.load_file(ARGV[0]).fetch("provides").fetch("entrypoints").each { |e| puts "#{e.fetch("name")} #{e.fetch("path")}" }' \
   "$FEEDSTOCK/manifests/payload.yaml" | while read -r cmdname cmdpath; do
+  # The runner's native windows ruby writes CRLF to the pipe — read -r
+  # keeps the CR, and a check against "path\r" fails the whole leg.
+  cmdname=${cmdname%$'\r'} cmdpath=${cmdpath%$'\r'}
   [ -f "$PAYLOAD$cmdpath" ] || die "declared entrypoint $cmdpath not staged"
   hits="$(grep -l "^$cmdname = " "$PAYLOAD"/lib/python/site-packages/*.dist-info/entry_points.txt 2>/dev/null | wc -l | tr -d ' ')"
   [ "$hits" = "1" ] || die "declaration drift: $cmdname is the console script of $hits staged distributions (want exactly 1)"
