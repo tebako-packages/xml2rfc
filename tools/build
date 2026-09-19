@@ -172,6 +172,18 @@ PAYLOAD="$WORK/payload"
 rm -rf "$PAYLOAD"
 mkdir -p "$PAYLOAD/bin" "$PAYLOAD/lib/python"
 mv "$TARGET" "$PAYLOAD/lib/python/site-packages"
+# Windows-ucrt only: the msys2 interpreter cannot load the MSVC-compiled
+# cp314 pyds inside the win_amd64 wheels, and PyPI publishes no mingw
+# wheels. lxml's compiled member therefore stages from the msys2 package
+# (a PREBUILT mingw binary distribution via pacman — never a source
+# build) over the wheel's copy; pyyaml and markupsafe carry pure-python
+# fallbacks and keep their wheels. MSYS2_SITE names the msys2 python's
+# site-packages (the workflow's setup-msys2 step installs the package).
+if [ "$TRIPLET" = x86_64-windows-ucrt ] && [ -n "${MSYS2_SITE:-}" ] && [ -d "$MSYS2_SITE/lxml" ]; then
+  rm -rf "$PAYLOAD/lib/python/site-packages/lxml"
+  cp -r "$MSYS2_SITE/lxml" "$PAYLOAD/lib/python/site-packages/lxml"
+  step "lxml staged from the msys2 package (the mingw-built compiled member)"
+fi
 # tr -d '\r': the checkout may be CRLF on windows and a shebang line
 # ending in CR fails exec ("bad interpreter").
 tr -d '\r' < "$FEEDSTOCK/templates/bin/xml2rfc" > "$PAYLOAD/bin/xml2rfc"

@@ -181,10 +181,21 @@ jobs:
           path: ${{ env.LOCK_GENERATED }}
           retention-days: 30
 
+      - name: Set up msys2 (the mingw lxml package — windows-ucrt only)
+        if: matrix.triplet == 'x86_64-windows-ucrt'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          release: false
+          install: >-
+            mingw-w64-ucrt-x86_64-python-lxml
+
       - name: Build the payload (host-native legs)
         if: matrix.container == ''
         env:
           TFS_CLI: ${{ github.workspace }}/.tools/tfs
+          MSYS2_SITE: ${{ matrix.triplet == 'x86_64-windows-ucrt' && 'C:/msys64/ucrt64/lib/python3.14/site-packages' || '' }}
         run: tools/build
 
       - name: Build the payload (container legs)
