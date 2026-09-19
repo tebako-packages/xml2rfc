@@ -138,9 +138,9 @@ rm -rf "$TARGET"
 # that variable, and init dies on the bare exe-side prefix. Isolation
 # from ambient PYTHON* state is the runtime driver's job, and it scrubs
 # before the interpreter initializes.
-# tools/pip_bootstrap.py forces BLOCKING connects under the staged
-# windows runtime (the msys2-cpython build breaks urllib3's non-blocking
-# connect: WinError 10035 on every fetch); posix is a no-op passthrough.
+# v0.2.6's interpreter widened _PyIsSelectable_fd (MSYS2 0040): the
+# staged runtime's own timed connects work natively and the
+# blocking-socket bootstrap is retired.
 # The wheel-tag arguments: POSIX legs install natively (the staged
 # interpreter IS the closure's ABI). The windows-ucrt leg stages
 # win_amd64 cp<PY> wheels with the cross-env spelling — explicit tags
@@ -154,7 +154,7 @@ cross_args=()
   cross_args=(--only-binary=:all: --platform win_amd64 --python-version "${PY_V%.*}" --implementation cp --abi "$cp_tag")
 }
 TEBAKO_RUNTIME_IMAGE="$RT_IMAGE" \
-  "$RT_EXE" "$FEEDSTOCK/tools/pip_bootstrap.py" install \
+  "$RT_EXE" -m pip install \
   --target "$TARGET" --no-cache-dir --require-hashes \
   ${cross_args[@]+"${cross_args[@]}"} \
   -r "$REQS" > "$WORK/pip.log" 2>&1 || {
