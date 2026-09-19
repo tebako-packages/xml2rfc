@@ -189,7 +189,10 @@ fi
 # §3.2), so the loader resolves them without any host installation.
 if [ -d "$FEEDSTOCK/out/msys2-dlls" ] && compgen -G "$FEEDSTOCK/out/msys2-dlls/"*.dll > /dev/null; then
   cp "$FEEDSTOCK/out/msys2-dlls/"*.dll "$PAYLOAD/bin/"
-  step "staged $(ls "$FEEDSTOCK/out/msys2-dlls/"*.dll | wc -l) mingw DLLs into the payload bin"
+  # The loader resolves a pyd's dependencies against the pyd's OWN
+  # directory first — a stronger guarantee than any PATH lead.
+  cp "$FEEDSTOCK/out/msys2-dlls/"*.dll "$PAYLOAD/lib/python/site-packages/lxml/"
+  step "staged $(ls "$FEEDSTOCK/out/msys2-dlls/"*.dll | wc -l) mingw DLLs into the payload bin and beside the pyds"
 fi
 # tr -d '\r': the checkout may be CRLF on windows and a shebang line
 # ending in CR fails exec ("bad interpreter").
