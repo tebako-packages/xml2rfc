@@ -29,8 +29,25 @@ RUNTIME="${RUNTIME:?set RUNTIME to the tebako runtime exe (tools/build writes ou
 RUNTIME_IMAGE="${RUNTIME_IMAGE:?set RUNTIME_IMAGE to the runtime env .tfs}"
 
 FEEDSTOCK="$(cd "$(dirname "$0")/.." && pwd)"
+# Native windows tools (ruby, the tebako/tfs CLIs, the runtime exe)
+# cannot read Git Bash's POSIX path spellings — FEEDSTOCK goes
+# windows-form where cygpath exists (inert on POSIX; the stage_runtime
+# pattern).
+if command -v cygpath >/dev/null 2>&1; then FEEDSTOCK="$(cygpath -m "$FEEDSTOCK")"; fi
 recipe() { ruby -ryaml -e "puts(YAML.load_file('$FEEDSTOCK/Tebakofile').dig(*ARGV) || '')" "$@"; }
 PKG_V="${PKG_V:-$(recipe upstream version)}"
+
+# On Git Bash the native CLIs (tfs, tebako, the runtime exe) receive
+# their arguments VERBATIM: MSYS2's argument path-conversion would
+# rewrite the in-image spellings (/bin/xml2rfc, the "/" mount) into host
+# paths. Suppress it and hand the host-path arguments windows-form
+# spellings instead (inert on POSIX).
+if command -v cygpath >/dev/null 2>&1; then
+  export MSYS2_ARG_CONV_EXCL="*"
+  IMG="$(cygpath -m "$IMG")"
+  RUNTIME="$(cygpath -m "$RUNTIME")"
+  RUNTIME_IMAGE="$(cygpath -m "$RUNTIME_IMAGE")"
+fi
 
 echo "== entrypoint assertions (in-process mount via the tfs CLI)"
 "$TFS" stat "$IMG" /bin/xml2rfc | grep -q File
@@ -41,11 +58,32 @@ echo "   /bin/xml2rfc, manifest, check fixture, site-packages: present"
 
 echo "== extract round-trip"
 X="$(mktemp -d)"
+# With MSYS2's conversion suppressed the -d target must be windows-form
+# for the native tfs (MSYS2 coreutils read the same spelling; inert on
+# POSIX).
+if command -v cygpath >/dev/null 2>&1; then X="$(cygpath -m "$X")"; fi
 "$TFS" extract -d "$X" "$IMG"
 [ -f "$X/bin/xml2rfc" ] || { echo "extracted entrypoint missing"; exit 1; }
 
-echo "== spec 26 payload checks (tebako check, the press-time moment)"
-"$TEBAKO" check "$IMG" --runtime "$RUNTIME" --runtime-image "$RUNTIME_IMAGE"
+# TEBAKO_DEBUG_TFS: the materialize trace (ok/error per extracted file) —
+# the windows tree-boot round-trips read this when an entrypoint fails to
+# land in the exec tree.
+if TEBAKO_DEBUG_TFS=1 "$TEBAKO" check "$IMG" --runtime "$RUNTIME" --runtime-image "$RUNTIME_IMAGE"; then
+  echo "spec-26 checks: OK"
+else
+  echo "== spec-26 checks FAILED — exec-cache forensics:"
+  for trees_dir in "${TEMP:-/tmp}"/tebako-exec-*/trees "${LOCALAPPDATA:-/nonexistent}/Temp"/tebako-exec-*/trees /c/Users/*/AppData/Local/Temp/tebako-exec-*/trees; do
+    [ -d "$trees_dir" ] || continue
+    echo "-- $trees_dir"
+    for d in "$trees_dir"/*/; do
+      [ -d "$d" ] || continue
+      echo "-- tree $d:"
+      ls -la "$d" | head -12
+      [ -d "$d/bin" ] && { echo "-- $d/bin:"; ls -la "$d/bin" | head -10; }
+    done
+  done
+  exit 1
+fi
 
 echo "== manual spec-17 dispatch smoke (the spec-32 spawn wire)"
 out="$(TEBAKO_RUNTIME_IMAGE="$RUNTIME_IMAGE" \

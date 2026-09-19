@@ -27,13 +27,20 @@ build:
                            # rides — the ABI edge stays uniform: the factory's
                            # windows-ucrt64 leg exists only for this line, the
                            # source factory ships no 3.13 windows-msys asset)
-    tebako: "0.2.0"        # the runtime package's <ver> (the factory's
-                           # VERSION). 0.2.0 is the shard-model line: the
-                           # release serves per-package manifest shards +
+    tebako: "0.2.5"        # the runtime package's <ver> (the factory's
+                           # VERSION). 0.2.3 is the materialize-tier line
+                           # that BOOTS on windows (the fs TU follows the
+                           # rewired TEBAKO_MOUNT_ROOT) AND ships the msys
+                           # _ctypes extension (libffi static) the xml2rfc
+                           # closure imports at boot:
+                           # the shard model (per-package manifest shards +
                            # per-asset .sha256 sidecars + OpenPGP .asc
-                           # signatures, and NO monolithic manifest.json /
-                           # SHA256SUMS.txt (tools/stage_runtime derives the
-                           # trimmed monoliths consumer-side).
+                           # signatures, NO monolithic manifest.json /
+                           # SHA256SUMS.txt — tools/stage_runtime derives
+                           # the trimmed monoliths consumer-side) plus
+                           # `windows_boot: materialize` on the msys env
+                           # image, so a windows payload boots on its own
+                           # platform.
     # RELEASE CHANNEL: the staging runtime and the CI test legs resolve the
     # factory RELEASE — tools/stage_runtime's release channel enumerates the
     # pinned tag's shards (gh release view), fetches the assets each shard
@@ -46,7 +53,7 @@ build:
     # PLANNED). NEVER a hand-installed python. The run-artifacts channel
     # remains selectable by env override for pre-publish factory builds only.
     channel: release       # release (published factory tag) | run-artifacts (pre-publish proof builds)
-    release: "v0.2.0"      # the factory release tag (release channel)
+    release: "v0.2.5"      # the factory release tag (release channel)
   # The closure's native members (lxml — C extension, per-triplet wheels,
   # musl = musllinux; markupsafe / pyyaml optional C speedups): staged
   # from PyPI wheels matching the staging runtime's ABI tag (cp314) and
@@ -56,19 +63,20 @@ build:
   native_members: ["lxml", "markupsafe", "pyyaml"]
 
 platforms:
-  # the tebako-runtime-python matrix's POSIX six. The windows-ucrt leg
-  # waits on the factory: the windows python runtime has no mount tier
-  # yet (its fs TU answers any mount with a named exit 69 — the factory
-  # README's windows boundary), so a windows payload could not execute
-  # on its own platform. The line choice (3.14.7) already anticipates
-  # the leg: the factory's windows-ucrt64 runtime exists only on the
-  # 3.14 line, and the ABI edge stays uniform when the leg lands.
+  # the tebako-runtime-python matrix's POSIX six plus the windows-ucrt
+  # leg, which rides the factory's v0.2.5 materialize tier
+  # (`windows_boot: materialize` on the msys env image — the driver
+  # extracts the mounted+verified images into the exec cache, so a
+  # windows payload boots on its own platform). The line choice (3.14.7)
+  # keeps the ABI edge uniform: the factory's windows-ucrt64 runtime
+  # exists only on the 3.14 line.
   - x86_64-linux-gnu
   - aarch64-linux-gnu
   - x86_64-linux-musl
   - aarch64-linux-musl
   - x86_64-macos
   - aarch64-macos
+  - x86_64-windows-ucrt
 
 provides:
   entrypoints:
@@ -78,10 +86,11 @@ provides:
 
 ci:
   # The leg topology (host runner per triplet): the tebako-runtime-python
-  # factory's POSIX matrix. The linux legs run on the ubuntu host and
+  # factory's matrix. The linux legs run on the ubuntu host and
   # docker-run the pinned tpkg-builder image per triplet-matched step —
   # the musl image is alpine-based and node actions cannot run on musl
-  # (the factory's _build-platform.yml grammar).
+  # (the factory's _build-platform.yml grammar). The windows leg is
+  # runner-native (no container; git-bash supplies curl/sha256sum/ruby).
   hosts:
     x86_64-linux-gnu: "ubuntu-22.04"
     aarch64-linux-gnu: "ubuntu-22.04-arm"
@@ -89,6 +98,7 @@ ci:
     aarch64-linux-musl: "ubuntu-22.04-arm"
     x86_64-macos: "macos-15-intel"
     aarch64-macos: "macos-14"
+    x86_64-windows-ucrt: "windows-latest"
   # Pinned BY DIGEST (tebako-ci-containers README: consumers pin by
   # digest; the v1 tag is the baked alpine 3.21 provisioning). Only the
   # musl legs docker-run — the gnu runtime exe executes on the ubuntu
@@ -99,43 +109,50 @@ ci:
 
 tools:
   repo: "tamatebako/tebako"
-  release: "v2.6.0"          # v2.6.0 is the first release whose embedded
-                             # root public key verifies the registry's
-                             # signature pins at the publish's own
-                             # clean-cache verify (the metanorma pattern);
-                             # it also ships spec 32 (the kind: executable
-                             # spawn edge — this payload is its first
-                             # instance) and the spec-26 `tebako check`
-                             # engine this feedstock's press-time gate rides
+  release: "v2.8.12"          # v2.8.12 carries the drive-root tree walk (a payload mounted at the drive root beside a descendant env mount extracts its own bytes); every pin below is verified against the release's own SHA256SUMS.
+# pressed exe reads as a package, not bare) and the tree-boot fix; every
+# pin below is verified against the release's own SHA256SUMS.
+                             # constraint-grammar reader + the windows
+                             # materialize reader the windows-ucrt leg's
+                             # boot path rides (on top of v2.6.0's
+                             # registry-signature verify, spec 32 spawn
+                             # edge, and spec-26 `tebako check` engine).
+                             # Every pin below is verified against the
+                             # release's own SHA256SUMS (the windows
+                             # assets carry the .exe suffix).
   sha256:
     tebako:
-      macos-arm64: "0f976f98e0da856e38585621bdaeec81c21607a77a6939c2a22e4b29d5b28274"
-      macos-x86_64: "91b43913da994c6787c12a5593483e0a6eb0105b30247bef90ad11ef3fe6f1f4"
-      linux-gnu-x86_64: "2ba65a2e31a4f974b05c1ff9ef459f4dd4dee68ea4cc5835349332b1795a3a5d"
-      linux-gnu-arm64: "f189bfa911cf81b335181b6dcdae66158b7f50b89c2b70e15df882eb4beb4f00"
-      linux-musl-x86_64: "7a83ed169637d4b0298995de5b908b9a3afe317a42a124d14a141e2f0f2e7992"
-      linux-musl-arm64: "c2add03eb4844e19db21252429a026594cba11bfc761d06ec38f0eab064e47b8"
+      macos-arm64: "0470c3ee9181616b81950159b520303d19f7230221d78d6d612192c82ac075fb"
+      macos-x86_64: "a2b7a35791ecadec733e15564838897c9c3a4d9ee37ea812728ceca8d8a252b2"
+      linux-gnu-x86_64: "569bc6f933ccdc20199330b9fa931b7671b261535ed682ff35c078ed5aa99cdd"
+      linux-gnu-arm64: "871866ce7dd85830723108d78cec8fc70fa3dadfd55481f246de25d889b95451"
+      linux-musl-x86_64: "beefe946c62af229eed35374297b97b066085b0fcce51dc7bd9ded10c5133aad"
+      linux-musl-arm64: "384f3467de70facba7499d515f43b60ef87bc9ccd3d9d33de2f328153dd5f36b"
+      windows-ucrt64: "8986b005c510b71cf7bf71e45756460f123fc9b993e528df05555546609558dd"
     tfs:
-      macos-arm64: "e30a1447353974f23322beb3bb0d8c0ff2cab4cf4b8412b7b6c350c76c609268"
-      macos-x86_64: "3d10397bd37617e56d9c36229043c97b270363c065e78d323a4cf15e681e9228"
-      linux-gnu-x86_64: "03f62f544d172ea301c163a332d8130f834f4c98c46fc64ba8e43efca230e7ea"
-      linux-gnu-arm64: "ce1799e1fecf5a09b67b953bb097a7ee19eb09269a638db6d2428f9a3538f502"
-      linux-musl-x86_64: "37f4cbc545b2feeb1b3906a2a3b54affff5612898a4cdeb75bd408b64223f6a0"
-      linux-musl-arm64: "be3d0d02b61b6ea46fedb2f3a02d9ef7f8065b9d2553a019239a5b5b3c6c03a6"
+      macos-arm64: "e96419695748ed6e612104b219d1aa0750de88939233e6f5f76a6c37666cf58a"
+      macos-x86_64: "1ca230f7b657652955d773ad3fb6f618e7fdd809322ca500c4a08f1834cbe27e"
+      linux-gnu-x86_64: "10634e705fe50401ef7a989419fc134773560741cea7b585a6bf197db780a862"
+      linux-gnu-arm64: "c0b50cc27e83f9757da08d046ce2eb9c3b02b30ab3323b4601f910b6eb395c73"
+      linux-musl-x86_64: "a0af6b0a8b72d9e04af67f49e6326e30adb8241be135f159537fd7acb3d1aed6"
+      linux-musl-arm64: "b42cbb30ebbfd490b51990683603b26d6a2a362d722d220ce239ca106ad9d99a"
+      windows-ucrt64: "764bd6dbb8ef4400779f56e0e57bbf2b74c7107226ae5ad6c566a02e063c3246"
     tebako-pkg:
-      macos-arm64: "b4711e1b9787cf64617ee2446b2432940834bd3d45514d0be5e8c7cc69acf460"
-      macos-x86_64: "879db7134b294b3942de79b6e9dfc64de392948020641d60a6973448e59ef0bd"
-      linux-gnu-x86_64: "a4e96f66ca2772330100deac47608bda9579eba6b799859daa3b937c18ac6965"
-      linux-gnu-arm64: "ed035a9ab5edd29c69bb7763fe513b3b418560075ef0f5fdf6f1df78c0873ee6"
-      linux-musl-x86_64: "361a9940e97e85519c5d4d01e6d027872f4d45083a3aec1a1920696200c03640"
-      linux-musl-arm64: "077d14b8e04312eab94bafda0bb6e56d055be9370beec7bd4c63cc2b9ff1da26"
+      macos-arm64: "7ba3bd373bcc19f6790cf8a3fada11284a6fbac4bfc82c94fd65d66ab40617d7"
+      macos-x86_64: "b64d2c5026f3b03b7ecdefbed3bce9a527ad71b1e3d9cae5c1ded4ccb1dbcf93"
+      linux-gnu-x86_64: "32897fe4369c62ed7fdb5ee635abf7dbf7b73080ea7486a67c3da3317881fcdc"
+      linux-gnu-arm64: "af68584b136d4cd4dcd95911ee71a5bb33db0365c5d91e445f13c3d50d3696a8"
+      linux-musl-x86_64: "1df32d00cd87a9f7a107643c6f6acffcf83c57f41c0235e53e0d2a5d5bebaee4"
+      linux-musl-arm64: "186dc38918a31728d45bcee1450b6f6009eabda2368dd052dd90d1472a219a47"
+      windows-ucrt64: "061bd879b7b28cd9849dfb9fcb82b72530b0724926e70c3c92f7fd5aead64702"
     tebako-shim:
-      macos-arm64: "6abb03da023770faad0759ca47c2914189a7ac41bb3be64c0392b7773698941f"
-      macos-x86_64: "377406bd49c57ef8e89264e9d52041eb1d9218affc189bb744952c8c99c5f52d"
-      linux-gnu-x86_64: "61ab3ae2d7418deefa012ab9e90b5100b69b8566f4aabd416bc0c6accf1c54ea"
-      linux-gnu-arm64: "dc753ed02a87cd79263ef34501654a15894aa4b8635907a347dcf669671930ba"
-      linux-musl-x86_64: "0c4135ee13ef45196700f5bcc3d49ff106d1e9482f64c78e88724b321f99e86f"
-      linux-musl-arm64: "13f97c397c595d0a76af8d0558ce5c68b2fd69bd7d9c0175994903a7ccc94995"
+      macos-arm64: "683d51b49c72d04397f69d47689eab846665053c9a1fb80806422bb07e7081d5"
+      macos-x86_64: "671f9ab7103222de88eb10d2cbc30c15f2e012b573969f0afd8eacce29dff759"
+      linux-gnu-x86_64: "0aa108dd60a485677f4304d6c1e24c50411693e27b9cd5c9cfaf4f8059fede73"
+      linux-gnu-arm64: "a24a361622f66aa85e2385bec442e72a0feb6ca84b18fccceb2964e23d2f2de5"
+      linux-musl-x86_64: "2ec5d65b12115a0910134cb3238e6bf0aec85b9ced03be4f0f287d0cf1cfc3c7"
+      linux-musl-arm64: "d3274c8c974fced7743cdbbb8e50bd3be8c604aa18903dd3bd238e79e6472277"
+      windows-ucrt64: "fd827e688fd8c0c6becb103c0bd2996fe10344cc9d61b0c1fd412207e34ec232"
 
 # Signing (spec 09 §9; the metanorma/hello pattern): the tamatebako CI
 # signing subkey signs every payload asset + the registry entry carries

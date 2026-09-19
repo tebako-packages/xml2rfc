@@ -24,9 +24,9 @@ serves resolution.
    (`requires_python >= 3.10`, classifiers covering 3.14) is documented
    in `Tebakofile`, not used as the edge constraint. The staging/exec
    line is python **3.14.7** — the one line every leg rides, so the ABI
-   edge stays uniform when the windows leg lands (the factory's
-   windows-ucrt64 runtime exists only on the 3.14 line; the source
-   factory ships no 3.13 windows-msys asset).
+   edge stays uniform across the matrix (the factory's windows-ucrt64
+   runtime exists only on the 3.14 line; the source factory ships no
+   3.13 windows-msys asset).
 3. **pipstage build.** `tools/build` stages the pinned PyPI closure with
    `pip install --target` run by a tebako python runtime's OWN interpreter
    (dogfood) — never the runner's python, never the user's machine. The
@@ -58,13 +58,13 @@ serves resolution.
    `/bin/xml2rfc` stub derives site-packages from its OWN location (the
    mount point is the dispatcher's choice), then installs the lxml VFS
    compat layer (deviation A below) before importing xml2rfc.
-6. **Platforms = the factory's POSIX six.** x86_64/aarch64 ×
-   linux-gnu/linux-musl/macos. The windows-ucrt leg waits on the
-   factory: the windows python runtime has no mount tier yet (its fs TU
-   answers any mount with a named exit 69 — the factory README's windows
-   boundary), so a windows payload could not execute on its own platform
-   until then. Metanorma's ietf DEPENDS keeps windows on its current path
-   in the meantime.
+6. **Platforms = the factory's POSIX six + windows-ucrt.**
+   x86_64/aarch64 × linux-gnu/linux-musl/macos, plus x86_64-windows-ucrt.
+   The windows leg rides the factory's v0.2.1 materialize tier
+   (`windows_boot: materialize` on the msys env image — the driver
+   extracts the mounted+verified images into the exec cache and rewires
+   the runtime root), so a windows payload boots on its own platform; the
+   leg is the proof.
 7. **Payload checks (spec 26).** `version` (exit 0) + `render-txt`
    (fixture mini.xml → mini.txt), carried in the manifest.
 
@@ -105,8 +105,9 @@ A. **lxml VFS compat layer (`templates/lib/python/site-packages/tebako_lxml_vfs.
 - `tools/` — pins.rb (recipe → CI env/matrix/payload-args) /
   stage_runtime / gen_closure / build / boot_smoke.
 - `.github/workflows/build-payload.yml` — plan (matrix from the recipe)
-  → six per-triplet legs (musl legs docker-run the digest-pinned
-  tpkg-builder image per step; gnu legs host-native; macos runner-native)
+  → seven per-triplet legs (musl legs docker-run the digest-pinned
+  tpkg-builder image per step; gnu legs host-native; macos + windows
+  runner-native)
   → the release job (gated: owner dispatch with `publish: true` on a tag
   ref — NEVER automatic).
 - `tpkg-registry.yaml` — this package's registry, published at the

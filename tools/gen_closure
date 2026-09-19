@@ -30,6 +30,10 @@
 set -euo pipefail
 
 FEEDSTOCK="$(cd "$(dirname "$0")/.." && pwd)"
+# Native windows tools (ruby, the runtime exe) cannot read Git Bash's
+# POSIX path spellings — FEEDSTOCK goes windows-form where cygpath exists
+# (inert on POSIX; the stage_runtime pattern).
+if command -v cygpath >/dev/null 2>&1; then FEEDSTOCK="$(cygpath -m "$FEEDSTOCK")"; fi
 recipe() { ruby -ryaml -e "puts(YAML.load_file('$FEEDSTOCK/Tebakofile').dig(*ARGV) || '')" "$@"; }
 
 VERSION="${VERSION:-$(recipe upstream version)}"
@@ -50,6 +54,7 @@ host_id_of() {
     aarch64-linux-musl) echo linux-musl-arm64 ;;
     x86_64-macos)      echo macos-x86_64 ;;
     aarch64-macos)     echo macos-arm64 ;;
+    x86_64-windows-ucrt) echo windows-ucrt64 ;;
     *) die "unknown TRIPLET: $1" ;;
   esac
 }
@@ -72,6 +77,11 @@ platform_tags() {
       echo "macosx_15_0_x86_64 macosx_14_0_x86_64 macosx_13_0_x86_64 macosx_12_0_x86_64 macosx_11_0_x86_64 macosx_10_16_x86_64 macosx_10_13_x86_64 macosx_10_9_x86_64 macosx_15_0_universal2 macosx_14_0_universal2 macosx_13_0_universal2 macosx_12_0_universal2 macosx_11_0_universal2 macosx_10_16_universal2 macosx_10_9_universal2" ;;
     aarch64-macos)
       echo "macosx_15_0_arm64 macosx_14_0_arm64 macosx_13_0_arm64 macosx_12_0_arm64 macosx_11_0_arm64 macosx_15_0_universal2 macosx_14_0_universal2 macosx_13_0_universal2 macosx_12_0_universal2 macosx_11_0_universal2 macosx_10_16_universal2 macosx_10_9_universal2" ;;
+    x86_64-windows-ucrt)
+      # PyPI's windows x86_64 tag (the ucrt runtime is a stock cpython
+      # win_amd64 ABI consumer — the native members stage from win_amd64
+      # cp314 wheels).
+      echo "win_amd64" ;;
     *) die "unknown TRIPLET: $1" ;;
   esac
 }
@@ -79,14 +89,23 @@ platform_tags() {
 one_leg() {
   local triplet="$1"
   local host_id; host_id="$(host_id_of "$triplet")"
-  local exe="$MIRROR/v$RT_TEBAKO/tebako-runtime-$RT_TEBAKO-$PY_V-$host_id"
-  local img="$exe.tfs"
+  # The windows runtime exe carries the .exe suffix (the env image keeps
+  # the suffixless stem on every platform).
+  local exe_sfx=""
+  case "$host_id" in windows-*) exe_sfx=".exe" ;; esac
+  local exe="$MIRROR/v$RT_TEBAKO/tebako-runtime-$RT_TEBAKO-$PY_V-$host_id$exe_sfx"
+  local img="$MIRROR/v$RT_TEBAKO/tebako-runtime-$RT_TEBAKO-$PY_V-$host_id.tfs"
   [ -x "$exe" ] || die "no staged runtime for $triplet: $exe (run tools/stage_runtime first)"
   [ -f "$img" ] || die "no staged runtime image for $triplet: $img"
 
   local out_file="$FEEDSTOCK/closure/$VERSION-$triplet.txt"
   local dest; dest="$(mktemp -d)/wheels"
   mkdir -p "$dest"
+  # pip runs INSIDE the native windows runtime exe — it cannot read Git
+  # Bash's POSIX spellings, so --dest goes windows-form where cygpath
+  # exists (inert on POSIX). The hashing subshell below cd's into the
+  # same spelling, which MSYS2 coreutils accept.
+  if command -v cygpath >/dev/null 2>&1; then dest="$(cygpath -m "$dest")"; fi
 
   # The wheel ABI tag of the staging line (3.14.x -> cp314) — derived from
   # the recipe's pin, never a literal.
@@ -99,19 +118,60 @@ one_leg() {
   done
 
   local log; log="$(mktemp)"
+  local resolved_by="the staged tebako python $PY_V runtime's own pip"
   if ! TEBAKO_RUNTIME_IMAGE="$img" "$exe" -m pip download \
       --dest "$dest" --no-cache-dir --only-binary=:all: \
       --python-version "${PY_V%.*}" --implementation cp \
       "${platform_args[@]}" \
       "xml2rfc==$VERSION" > "$log" 2>&1; then
-    cat "$log" >&2
-    # The named error lists what PyPI offers for each native member (the
-    # fail-closed audit of TODO.python/04 item 1), reported by the staged
-    # runtime itself (pip's vendored certifi carries the trust roots).
-    TEBAKO_RUNTIME_IMAGE="$img" "$exe" "$FEEDSTOCK/tools/pypi_offers.py" \
-      $(ruby -ryaml -e 'puts YAML.load_file(ARGV[0]).dig("build", "native_members").join(" ")' "$FEEDSTOCK/Tebakofile") \
-      "$VERSION" || true
-    die "pip resolution failed for $triplet — no matching wheel for at least one member (see above)"
+    # Windows-ucrt only: the msys2-cpython build's pip rides urllib3's
+    # non-blocking connect, which dies with WinError 10035
+    # (WSAEWOULDBLOCK surfaced unhandled) in CI legs. The stdlib
+    # blocking-socket path in tools/pypi_offers.py reaches PyPI from the
+    # SAME exe — the runtime's TLS and trust roots are fine; the
+    # resolver's connect path is what breaks. NAMED fallback: the
+    # runner's python re-resolves the SAME constraint set in
+    # cross-platform download mode — --platform/--python-version/
+    # --abi/--implementation/--only-binary all explicit, nothing
+    # implicit from the host interpreter (a missing --abi would resolve
+    # the HOST's wheel tag and corrupt the closure) — so the closure
+    # bytes stay identical, and the three-way hash audit below is
+    # resolver-independent.
+    if [ "$triplet" = x86_64-windows-ucrt ] && command -v python >/dev/null 2>&1; then
+      step "in-exe pip could not connect (msys2 WinError 10035) — the runner's python re-resolves the SAME constraint set for $triplet (explicit --abi $cp_tag)"
+      # The fallback dest lives under the repo root in the SAME windows
+      # spelling every native tool in this job already uses successfully
+      # (mktemp's MSYS /tmp view and the native python's view of it are
+      # not guaranteed to be the same directory).
+      local fdest="$PWD/.closure-wheels-$$"
+      mkdir -p "$fdest"
+      command -v cygpath >/dev/null 2>&1 && fdest="$(cygpath -m "$fdest")"
+      step "fallback dest: $fdest (python: $(command -v python) $(python -V 2>&1))"
+      if python -m pip download \
+          --dest "$fdest" --no-cache-dir --only-binary=:all: \
+          --python-version "${PY_V%.*}" --implementation cp \
+          --abi "$cp_tag" \
+          "${platform_args[@]}" \
+          "xml2rfc==$VERSION" > "$log" 2>&1; then
+        local got; got="$(ls "$fdest"/*.whl 2>/dev/null | wc -l | tr -d ' ')"
+        [ "$got" -gt 0 ] || { tail -20 "$log" >&2; die "fallback downloaded 0 wheels — see pip's log above"; }
+        step "fallback resolved $got wheels"
+        dest="$fdest"
+        resolved_by="the runner's python (named fallback: the staged runtime's pip hits the msys2 WinError 10035 connect pathology)"
+      else
+        cat "$log" >&2
+        die "host-python fallback failed for $triplet — see pip's error above"
+      fi
+    else
+      cat "$log" >&2
+      # The named error lists what PyPI offers for each native member (the
+      # fail-closed audit), reported by the staged
+      # runtime itself (pip's vendored certifi carries the trust roots).
+      TEBAKO_RUNTIME_IMAGE="$img" "$exe" "$FEEDSTOCK/tools/pypi_offers.py" \
+        $(ruby -ryaml -e 'puts YAML.load_file(ARGV[0]).dig("build", "native_members").join(" ")' "$FEEDSTOCK/Tebakofile") \
+        "$VERSION" || true
+      die "pip resolution failed for $triplet — no matching wheel for at least one member (see above)"
+    fi
   fi
 
   step "hash the resolved set -> $out_file"
@@ -119,11 +179,17 @@ one_leg() {
   {
     echo "# xml2rfc install set — <sha256>  <wheel filename> (the store-sidecar shape;"
     echo "# verifiable with: shasum -a 256 -c <this file> from a dir holding the wheels)"
-    echo "# generated by tools/gen_closure: the staged tebako python $PY_V runtime's own"
-    echo "# pip ($cp_tag) resolved xml2rfc==$VERSION against PyPI for platform tags of $triplet"
+    echo "# generated by tools/gen_closure: $resolved_by"
+    echo "# resolved xml2rfc==$VERSION against PyPI for platform tags of $triplet"
     (cd "$dest" && for f in *.whl; do
       if command -v sha256sum >/dev/null 2>&1; then sha256sum "$f"; else shasum -a 256 "$f"; fi
-    done | sort)
+    # MSYS2 coreutils default to BINARY mode ("<hash> *<name>", one space
+    # + asterisk); GNU on linux emits text mode ("<hash>  <name>", two
+    # spaces). Canonicalize to the two-space form so the native-member
+    # assertion (and any sha256sum -c consumer) sees one shape on every
+    # platform. A no-op for text-mode output (wheel names cannot start
+    # with `*`).
+    done | sed -E 's/^([0-9a-fA-F]{64}) \*/\1  /' | sort)
   } > "$out_file"
 
   # Native-member wheel assertion (the recipe's native_members): each must

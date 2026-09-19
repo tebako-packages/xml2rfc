@@ -92,12 +92,12 @@ sha256_file() {
   fi
 }
 
-# The recipe's POSIX six (the windows-ucrt64 leg waits on the factory's
-# windows mount tier — Tebakofile's platforms comment). <artifact os-arch>
-# == the factory's host_id (Platform::HOST_IDS) on every leg — asserted,
-# never assumed. HOST_IDS is overridable: a CI leg stages only its own
-# platform's package.
-HOST_IDS="${HOST_IDS:-linux-gnu-x86_64 linux-gnu-arm64 linux-musl-x86_64 linux-musl-arm64 macos-x86_64 macos-arm64}"
+# The recipe's matrix (POSIX six + windows-ucrt64, which rides the
+# factory's v0.2.1 materialize tier — Tebakofile's platforms comment).
+# <artifact os-arch> == the factory's host_id (Platform::HOST_IDS) on
+# every leg — asserted, never assumed. HOST_IDS is overridable: a CI leg
+# stages only its own platform's package.
+HOST_IDS="${HOST_IDS:-linux-gnu-x86_64 linux-gnu-arm64 linux-musl-x86_64 linux-musl-arm64 macos-x86_64 macos-arm64 windows-ucrt64}"
 
 case "$CHANNEL" in
   run-artifacts)

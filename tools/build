@@ -37,6 +37,10 @@
 set -euo pipefail
 
 FEEDSTOCK="$(cd "$(dirname "$0")/.." && pwd)"
+# Native windows tools (ruby, the runtime exe, the tfs CLI) cannot read
+# Git Bash's POSIX path spellings — FEEDSTOCK goes windows-form where
+# cygpath exists (inert on POSIX; the stage_runtime pattern).
+if command -v cygpath >/dev/null 2>&1; then FEEDSTOCK="$(cygpath -m "$FEEDSTOCK")"; fi
 recipe() { ruby -ryaml -e "puts(YAML.load_file('$FEEDSTOCK/Tebakofile').dig(*ARGV) || '')" "$@"; }
 
 VERSION="${VERSION:-$(recipe upstream version)}"
@@ -61,8 +65,9 @@ sha256_file() {
 }
 
 # triplet -> host_id (Platform::HOST_IDS) + the release-asset platform
-# form (spec 03 §3) — identical on the POSIX six; kept as two names so a
-# divergence fails loudly instead of mis-naming an artifact.
+# form (spec 03 §3) — identical on the POSIX six and windows-ucrt64;
+# kept as two names so a divergence fails loudly instead of mis-naming
+# an artifact.
 case "$TRIPLET" in
   x86_64-linux-gnu)  HOST_ID=linux-gnu-x86_64 ;;
   aarch64-linux-gnu) HOST_ID=linux-gnu-arm64 ;;
@@ -70,23 +75,29 @@ case "$TRIPLET" in
   aarch64-linux-musl) HOST_ID=linux-musl-arm64 ;;
   x86_64-macos)      HOST_ID=macos-x86_64 ;;
   aarch64-macos)     HOST_ID=macos-arm64 ;;
+  x86_64-windows-ucrt) HOST_ID=windows-ucrt64 ;;
   *) die "unknown TRIPLET: $TRIPLET" ;;
 esac
 ASSET_PLATFORM="$HOST_ID"
+# The windows runtime exe carries the .exe suffix (the env image and the
+# .abi sidecar keep the suffixless stem on every platform).
+EXE_SFX=""
+case "$HOST_ID" in windows-*) EXE_SFX=".exe" ;; esac
 
 [ -f "$CLOSURE" ] || die "no closure file for $TRIPLET: $CLOSURE (run tools/gen_closure TRIPLET=$TRIPLET)"
 mkdir -p "$WORK" "$OUT"
 
 # ------------------------------------------------------- staged runtime
 step "staged tebako python $PY_V runtime (tebako $RT_TEBAKO, $HOST_ID)"
-RT_EXE="$MIRROR/v$RT_TEBAKO/tebako-runtime-$RT_TEBAKO-$PY_V-$HOST_ID"
-RT_IMAGE="$RT_EXE.tfs"
+RT_STEM="$MIRROR/v$RT_TEBAKO/tebako-runtime-$RT_TEBAKO-$PY_V-$HOST_ID"
+RT_EXE="$RT_STEM$EXE_SFX"
+RT_IMAGE="$RT_STEM.tfs"
 [ -x "$RT_EXE" ] || die "no staged runtime exe: $RT_EXE (run tools/stage_runtime first)"
 [ -f "$RT_IMAGE" ] || die "no staged runtime image: $RT_IMAGE"
 # The ABI edge (spec 05 §5) flows from the runtime's OWN .abi sidecar —
 # the factory is the single owner; a missing/empty sidecar is a named
 # error, never a re-derived guess.
-ABI_FILE="$MIRROR/v$RT_TEBAKO/tebako-runtime-$RT_TEBAKO-$PY_V-$HOST_ID.abi"
+ABI_FILE="$RT_STEM.abi"
 [ -f "$ABI_FILE" ] || die "no abi sidecar next to the staged runtime: $ABI_FILE"
 ABI="$(tr -d '[:space:]' < "$ABI_FILE")"
 [ -n "$ABI" ] || die "empty abi sidecar: $ABI_FILE"
@@ -121,9 +132,31 @@ echo "locked requirements: $(grep -c . "$REQS")"
 step "pip install --target with the STAGED runtime's own interpreter"
 TARGET="$WORK/stage"
 rm -rf "$TARGET"
+# NO -E here: the staged runtime's stdlib rides the DRIVER-set PYTHONHOME
+# (the materialize tier extracts the env image and hands the tree over
+# through the environment) — `-E` makes the interpreter ignore exactly
+# that variable, and init dies on the bare exe-side prefix. Isolation
+# from ambient PYTHON* state is the runtime driver's job, and it scrubs
+# before the interpreter initializes.
+# tools/pip_bootstrap.py forces BLOCKING connects under the staged
+# windows runtime (the msys2-cpython build breaks urllib3's non-blocking
+# connect: WinError 10035 on every fetch); posix is a no-op passthrough.
+# The wheel-tag arguments: POSIX legs install natively (the staged
+# interpreter IS the closure's ABI). The windows-ucrt leg stages
+# win_amd64 cp<PY> wheels with the cross-env spelling — explicit tags
+# bypass the msys interpreter's own (mingw) tag set, which does not
+# admit the win_amd64 binaries the closure locks; without them pip
+# falls back to the sdist and the hash audit dies. --only-binary keeps
+# pip on the locked wheels (source builds are never a feedstock path).
+cross_args=()
+[ "$TRIPLET" = x86_64-windows-ucrt ] && {
+  cp_tag="cp$(echo "${PY_V%.*}" | tr -d '.')"
+  cross_args=(--only-binary=:all: --platform win_amd64 --python-version "${PY_V%.*}" --implementation cp --abi "$cp_tag")
+}
 TEBAKO_RUNTIME_IMAGE="$RT_IMAGE" \
-  "$RT_EXE" -E -m pip install \
+  "$RT_EXE" "$FEEDSTOCK/tools/pip_bootstrap.py" install \
   --target "$TARGET" --no-cache-dir --require-hashes \
+  ${cross_args[@]+"${cross_args[@]}"} \
   -r "$REQS" > "$WORK/pip.log" 2>&1 || {
   tail -30 "$WORK/pip.log" >&2
   die "pip staging FAILED (full log: $WORK/pip.log)"
@@ -139,7 +172,31 @@ PAYLOAD="$WORK/payload"
 rm -rf "$PAYLOAD"
 mkdir -p "$PAYLOAD/bin" "$PAYLOAD/lib/python"
 mv "$TARGET" "$PAYLOAD/lib/python/site-packages"
-cp "$FEEDSTOCK/templates/bin/xml2rfc" "$PAYLOAD/bin/xml2rfc"
+# Windows-ucrt only: the msys2 interpreter cannot load the MSVC-compiled
+# cp314 pyds inside the win_amd64 wheels, and PyPI publishes no mingw
+# wheels. lxml's compiled member therefore stages from the msys2 package
+# (a PREBUILT mingw binary distribution via pacman — never a source
+# build) over the wheel's copy; pyyaml and markupsafe carry pure-python
+# fallbacks and keep their wheels. MSYS2_SITE names the msys2 python's
+# site-packages (the workflow's setup-msys2 step installs the package).
+if [ "$TRIPLET" = x86_64-windows-ucrt ] && [ -n "${MSYS2_SITE:-}" ] && [ -d "$MSYS2_SITE/lxml" ]; then
+  rm -rf "$PAYLOAD/lib/python/site-packages/lxml"
+  cp -r "$MSYS2_SITE/lxml" "$PAYLOAD/lib/python/site-packages/lxml"
+  step "lxml staged from the msys2 package (the mingw-built compiled member)"
+fi
+# The mingw pyds' own dependency DLLs (libxml2, libxslt, the mingw
+# runtime) ride the payload's bin/ — a PATH lead at dispatch (spec 22
+# §3.2), so the loader resolves them without any host installation.
+if [ -d "$FEEDSTOCK/out/msys2-dlls" ] && compgen -G "$FEEDSTOCK/out/msys2-dlls/"*.dll > /dev/null; then
+  cp "$FEEDSTOCK/out/msys2-dlls/"*.dll "$PAYLOAD/bin/"
+  # The loader resolves a pyd's dependencies against the pyd's OWN
+  # directory first — a stronger guarantee than any PATH lead.
+  cp "$FEEDSTOCK/out/msys2-dlls/"*.dll "$PAYLOAD/lib/python/site-packages/lxml/"
+  step "staged $(ls "$FEEDSTOCK/out/msys2-dlls/"*.dll | wc -l) mingw DLLs into the payload bin and beside the pyds"
+fi
+# tr -d '\r': the checkout may be CRLF on windows and a shebang line
+# ending in CR fails exec ("bad interpreter").
+tr -d '\r' < "$FEEDSTOCK/templates/bin/xml2rfc" > "$PAYLOAD/bin/xml2rfc"
 chmod 755 "$PAYLOAD/bin/xml2rfc"
 # The lxml VFS compat layer (authored payload content, not an upstream
 # patch) sits next to the closure; templates/ is the ONE source.
@@ -151,6 +208,9 @@ cp "$FEEDSTOCK/templates/lib/python/site-packages/tebako_lxml_vfs.py" \
 # the console script of the same name (drift = named error).
 ruby -ryaml -e 'YAML.load_file(ARGV[0]).fetch("provides").fetch("entrypoints").each { |e| puts "#{e.fetch("name")} #{e.fetch("path")}" }' \
   "$FEEDSTOCK/manifests/payload.yaml" | while read -r cmdname cmdpath; do
+  # The runner's native windows ruby writes CRLF to the pipe — read -r
+  # keeps the CR, and a check against "path\r" fails the whole leg.
+  cmdname=${cmdname%$'\r'} cmdpath=${cmdpath%$'\r'}
   [ -f "$PAYLOAD$cmdpath" ] || die "declared entrypoint $cmdpath not staged"
   hits="$(grep -l "^$cmdname = " "$PAYLOAD"/lib/python/site-packages/*.dist-info/entry_points.txt 2>/dev/null | wc -l | tr -d ' ')"
   [ "$hits" = "1" ] || die "declaration drift: $cmdname is the console script of $hits staged distributions (want exactly 1)"
@@ -164,6 +224,9 @@ mkdir -p "$PAYLOAD/__tpkg__"
 # blob_sha256's fixed-point rule (spec 03 §7): the image cannot carry its
 # own digest — the embedded copy keeps the zero placeholder; the sibling
 # manifest (below) carries the real one for the release/registry tier.
+# git may check the manifest out with CRLF on windows — the embedded
+# copy must be LF or the entrypoint paths carry a trailing CR and the
+# driver opens "bin/xml2rfc\r" (invisible in the rendered log).
 sed -e "s|@@VERSION@@|$VERSION|g" \
     -e "s|@@CREATED@@|$(date -u +%Y-%m-%dT%H:%M:%SZ)|" \
     -e "s|@@FEEDSTOCK_SHA@@|$(git -C "$FEEDSTOCK" rev-parse HEAD)|" \
@@ -171,7 +234,7 @@ sed -e "s|@@VERSION@@|$VERSION|g" \
     -e "s|@@ABI@@|$ABI|" \
     -e "s|^  platforms: \[.*\]|  platforms: [$TRIPLET]|" \
     -e "s|@@BLOB_SHA256@@|0000000000000000000000000000000000000000000000000000000000000000|" \
-    "$FEEDSTOCK/manifests/payload.yaml" > "$MAN_EMBED"
+    "$FEEDSTOCK/manifests/payload.yaml" | tr -d '\r' > "$MAN_EMBED"
 grep -q '@@' "$MAN_EMBED" && die "unfilled @@…@@ placeholders remain in the embedded manifest"
 echo "embedded manifest: $MAN_EMBED"
 

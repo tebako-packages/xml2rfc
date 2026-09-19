@@ -4,18 +4,18 @@ name: build-payload
 #
 # The first python payload (kind: app on the tebako-runtime-python
 # 3.14.7 line — the one line every leg rides, so the ABI edge is uniform
-# when the windows leg lands: the factory's windows-ucrt64 runtime exists
-# only on the 3.14 line). Six POSIX legs; the windows-ucrt leg waits on
-# the factory's windows mount tier (the runtime's fs TU answers any mount
-# with a named exit 69 — a windows payload could not execute on its own
-# platform until then).
+# across the matrix: the factory's windows-ucrt64 runtime exists only on
+# the 3.14 line). Six POSIX legs plus the windows-ucrt leg, which rides
+# the factory's v0.2.1 materialize tier (`windows_boot: materialize` on
+# the msys env image — a windows payload boots on its own platform).
 #
 # Leg grammar (the runtime factory's _build-platform.yml): the linux legs
 # run on the ubuntu host; the musl legs docker-run the pinned
 # tpkg-builder image per triplet-matched step (the musl image is
 # alpine-based and node actions cannot run on musl — the job-level
 # container: form is out); the gnu legs are host-native (this feedstock
-# compiles nothing — pipstage fetches wheels). macos legs runner-native.
+# compiles nothing — pipstage fetches wheels). macos + windows legs
+# runner-native.
 #
 # Runtime staging (README decision 4): each leg stages its platform's
 # runtime package from the pinned factory release TAG into a file://
@@ -51,6 +51,15 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+
+# Every run: block is bash (set -euo pipefail). On windows-latest the
+# default shell is pwsh and every step would break — git-bash on the
+# windows runner provides curl/sha256sum/ruby. No step carries a
+# per-step shell: override; the musl docker arms stay triplet-gated (the
+# windows leg never enters them).
+defaults:
+  run:
+    shell: bash
 
 jobs:
   plan:
@@ -172,10 +181,62 @@ jobs:
           path: ${{ env.LOCK_GENERATED }}
           retention-days: 30
 
+      - name: Set up msys2 (the mingw lxml package — windows-ucrt only)
+        if: matrix.triplet == 'x86_64-windows-ucrt'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          release: false
+          install: >-
+            mingw-w64-ucrt-x86_64-python-lxml
+            binutils
+
+      - name: Collect the mingw lxml DLL closure
+        if: matrix.triplet == 'x86_64-windows-ucrt'
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          ws="$(cygpath -u "$GITHUB_WORKSPACE")"
+          out="$ws/out/msys2-dlls"
+          mkdir -p "$out"
+          # mingw ldd cannot trace PE binaries; the import table via
+          # objdump is the source of truth. The worklist fixpoints: a
+          # copied DLL's own imports (libxml2 -> zlib, ...) ride too.
+          worklist=(/ucrt64/lib/python3.14/site-packages/lxml/*.pyd)
+          declare -A seen=()
+          for pass in 1 2 3 4; do
+            add=()
+            for bin_path in "${worklist[@]}"; do
+              [ -f "$bin_path" ] || continue
+              for dll in $(objdump -p "$bin_path" | awk '/DLL Name:/ {print $NF}'); do
+                [ -z "${seen[$dll]:-}" ] || continue
+                resolved="$(ls /ucrt64/bin/"$dll" 2>/dev/null || true)"
+                if [ -z "$resolved" ]; then
+                  # msys2 ships versioned sonames (an import of
+                  # libxml2.dll is the file libxml2-2.dll): match the
+                  # stem with a version suffix.
+                  resolved="$(find /ucrt64/bin -maxdepth 1 -name "${dll%.dll}-*.dll" 2>/dev/null | head -1 || true)"
+                fi
+                if [ -n "$resolved" ]; then
+                  seen["$dll"]=1
+                  cp "$resolved" "$out/"
+                  add+=("$resolved")
+                else
+                  echo "::warning::no ucrt64 provider for the import $dll (system DLL or unmet)"
+                fi
+              done
+            done
+            [ ${#add[@]} -gt 0 ] || break
+            worklist=("${add[@]}")
+          done
+          ls "$out"
+
       - name: Build the payload (host-native legs)
         if: matrix.container == ''
         env:
           TFS_CLI: ${{ github.workspace }}/.tools/tfs
+          MSYS2_SITE: ${{ matrix.triplet == 'x86_64-windows-ucrt' && 'C:/msys64/ucrt64/lib/python3.14/site-packages' || '' }}
         run: tools/build
 
       - name: Build the payload (container legs)
