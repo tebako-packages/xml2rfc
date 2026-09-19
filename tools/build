@@ -184,6 +184,13 @@ if [ "$TRIPLET" = x86_64-windows-ucrt ] && [ -n "${MSYS2_SITE:-}" ] && [ -d "$MS
   cp -r "$MSYS2_SITE/lxml" "$PAYLOAD/lib/python/site-packages/lxml"
   step "lxml staged from the msys2 package (the mingw-built compiled member)"
 fi
+# The mingw pyds' own dependency DLLs (libxml2, libxslt, the mingw
+# runtime) ride the payload's bin/ — a PATH lead at dispatch (spec 22
+# §3.2), so the loader resolves them without any host installation.
+if [ -d "$FEEDSTOCK/out/msys2-dlls" ] && compgen -G "$FEEDSTOCK/out/msys2-dlls/"*.dll > /dev/null; then
+  cp "$FEEDSTOCK/out/msys2-dlls/"*.dll "$PAYLOAD/bin/"
+  step "staged $(ls "$FEEDSTOCK/out/msys2-dlls/"*.dll | wc -l) mingw DLLs into the payload bin"
+fi
 # tr -d '\r': the checkout may be CRLF on windows and a shebang line
 # ending in CR fails exec ("bad interpreter").
 tr -d '\r' < "$FEEDSTOCK/templates/bin/xml2rfc" > "$PAYLOAD/bin/xml2rfc"

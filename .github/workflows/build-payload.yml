@@ -191,6 +191,19 @@ jobs:
           install: >-
             mingw-w64-ucrt-x86_64-python-lxml
 
+      - name: Collect the mingw lxml DLL closure
+        if: matrix.triplet == 'x86_64-windows-ucrt'
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          ws="$(cygpath -u "$GITHUB_WORKSPACE")"
+          mkdir -p "$ws/out/msys2-dlls"
+          cd /ucrt64/lib/python3.14/site-packages/lxml
+          for pyd in ./*.pyd; do
+            ldd "$pyd" | awk '$3 ~ /ucrt64/ {print $3}'
+          done | sort -u | while read -r dll; do cp "$dll" "$ws/out/msys2-dlls/"; done
+          ls "$ws/out/msys2-dlls"
+
       - name: Build the payload (host-native legs)
         if: matrix.container == ''
         env:
