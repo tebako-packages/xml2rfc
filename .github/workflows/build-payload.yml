@@ -210,11 +210,20 @@ jobs:
             for bin_path in "${worklist[@]}"; do
               [ -f "$bin_path" ] || continue
               for dll in $(objdump -p "$bin_path" | awk '/DLL Name:/ {print $NF}'); do
-                resolved="/ucrt64/bin/$dll"
-                if [ -f "$resolved" ] && [ -z "${seen[$dll]:-}" ]; then
+                [ -z "${seen[$dll]:-}" ] || continue
+                resolved="$(ls /ucrt64/bin/"$dll" 2>/dev/null || true)"
+                if [ -z "$resolved" ]; then
+                  # msys2 ships versioned sonames (an import of
+                  # libxml2.dll is the file libxml2-2.dll): match the
+                  # stem with a version suffix.
+                  resolved="$(find /ucrt64/bin -maxdepth 1 -name "${dll%.dll}-*.dll" 2>/dev/null | head -1 || true)"
+                fi
+                if [ -n "$resolved" ]; then
                   seen["$dll"]=1
                   cp "$resolved" "$out/"
                   add+=("$resolved")
+                else
+                  echo "::warning::no ucrt64 provider for the import $dll (system DLL or unmet)"
                 fi
               done
             done
