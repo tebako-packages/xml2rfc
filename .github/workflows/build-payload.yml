@@ -221,7 +221,7 @@ jobs:
             [ ${#add[@]} -gt 0 ] || break
             worklist=("${add[@]}")
           done
-          ls "$out""
+          ls "$out"
 
       - name: Build the payload (host-native legs)
         if: matrix.container == ''
