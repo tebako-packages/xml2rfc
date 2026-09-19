@@ -190,6 +190,7 @@ jobs:
           release: false
           install: >-
             mingw-w64-ucrt-x86_64-python-lxml
+            binutils
 
       - name: Collect the mingw lxml DLL closure
         if: matrix.triplet == 'x86_64-windows-ucrt'
