@@ -197,12 +197,30 @@ jobs:
         run: |
           set -euo pipefail
           ws="$(cygpath -u "$GITHUB_WORKSPACE")"
-          mkdir -p "$ws/out/msys2-dlls"
-          cd /ucrt64/lib/python3.14/site-packages/lxml
-          for pyd in ./*.pyd; do
-            ldd "$pyd" | awk '$3 ~ /ucrt64/ {print $3}'
-          done | sort -u | while read -r dll; do cp "$dll" "$ws/out/msys2-dlls/"; done
-          ls "$ws/out/msys2-dlls"
+          out="$ws/out/msys2-dlls"
+          mkdir -p "$out"
+          # mingw ldd cannot trace PE binaries; the import table via
+          # objdump is the source of truth. The worklist fixpoints: a
+          # copied DLL's own imports (libxml2 -> zlib, ...) ride too.
+          worklist=(/ucrt64/lib/python3.14/site-packages/lxml/*.pyd)
+          declare -A seen=()
+          for pass in 1 2 3 4; do
+            add=()
+            for bin_path in "${worklist[@]}"; do
+              [ -f "$bin_path" ] || continue
+              for dll in $(objdump -p "$bin_path" | awk '/DLL Name:/ {print $NF}'); do
+                resolved="/ucrt64/bin/$dll"
+                if [ -f "$resolved" ] && [ -z "${seen[$dll]:-}" ]; then
+                  seen["$dll"]=1
+                  cp "$resolved" "$out/"
+                  add+=("$resolved")
+                fi
+              done
+            done
+            [ ${#add[@]} -gt 0 ] || break
+            worklist=("${add[@]}")
+          done
+          ls "$out""
 
       - name: Build the payload (host-native legs)
         if: matrix.container == ''
