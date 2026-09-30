@@ -401,6 +401,15 @@ jobs:
     # The owner's explicit act ONLY (the ecosystem hard rule): a dispatch
     # with publish=true on a tag ref. Push/tag/PR runs never publish.
     if: ${{ always() && !cancelled() && inputs.publish && needs.build.result == 'success' && needs.wrong-line-refusal.result == 'success' && startsWith(github.ref, 'refs/tags/') }}
+    # A job-level block REPLACES the workflow-level grant, so contents +
+    # pull-requests are restated; attestations/id-token arm the SLSA L3
+    # provenance step at the job tail (same publish gate — a non-publish
+    # run never runs this job, so it never attests).
+    permissions:
+      contents: write
+      pull-requests: write
+      attestations: write
+      id-token: write
     env:
       TEBAKO_CLI: ${{ github.workspace }}/.packager/tebako
       TEBAKO_HOME: ${{ github.workspace }}/.tebako
@@ -489,6 +498,22 @@ jobs:
             --release "tfs:github:tebako-packages/xml2rfc:${{ github.ref_name }}" \
             $(ruby tools/pins.rb --payload-args) \
             --registry-out "$PWD/tpkg-registry.yaml"
+
+      # SLSA L3 provenance over the exact bytes this publish ships — the
+      # per-triplet payload images the tebako publish step above uploads
+      # (staged at out/<triplet>/ by the restore step; local names ARE
+      # the release-asset names). The depth-2 glob deliberately cannot
+      # reach out/runtime-mirror/v*/ — those bytes ship on the python
+      # factory's own release, not this one. The CLI-derived .asc
+      # signatures never touch the disk, and the manifest sidecars are
+      # in-run artifacts only — neither is a release asset, so the glob
+      # names neither. Gated with the publish above: a non-publish run
+      # never runs this job, so it never attests.
+      - name: Attest build provenance
+        if: ${{ inputs.publish && startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: out/*/*.tfs
       # main is branch-protected: the registry lands by bot PR +
       # auto-merge, never by direct push (the metanorma pattern).
       # Idempotent across re-runs of the same tag.
