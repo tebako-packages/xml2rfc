@@ -109,50 +109,43 @@ ci:
 
 tools:
   repo: "tamatebako/tebako"
-  release: "v2.8.12"          # v2.8.12 carries the drive-root tree walk (a payload mounted at the drive root beside a descendant env mount extracts its own bytes); every pin below is verified against the release's own SHA256SUMS.
-# pressed exe reads as a package, not bare) and the tree-boot fix; every
-# pin below is verified against the release's own SHA256SUMS.
-                             # constraint-grammar reader + the windows
-                             # materialize reader the windows-ucrt leg's
-                             # boot path rides (on top of v2.6.0's
-                             # registry-signature verify, spec 32 spawn
-                             # edge, and spec-26 `tebako check` engine).
-                             # Every pin below is verified against the
-                             # release's own SHA256SUMS (the windows
-                             # assets carry the .exe suffix).
+  release: "v2.8.24"          # v2.8.24 ships spec 38's publish --oci (the
+                             # dual-publish leg the OCI_REPO variable arms);
+                             # every pin below is verified against the
+                             # release's own SHA256SUMS.
   sha256:
     tebako:
-      macos-arm64: "0470c3ee9181616b81950159b520303d19f7230221d78d6d612192c82ac075fb"
-      macos-x86_64: "a2b7a35791ecadec733e15564838897c9c3a4d9ee37ea812728ceca8d8a252b2"
-      linux-gnu-x86_64: "569bc6f933ccdc20199330b9fa931b7671b261535ed682ff35c078ed5aa99cdd"
-      linux-gnu-arm64: "871866ce7dd85830723108d78cec8fc70fa3dadfd55481f246de25d889b95451"
-      linux-musl-x86_64: "beefe946c62af229eed35374297b97b066085b0fcce51dc7bd9ded10c5133aad"
-      linux-musl-arm64: "384f3467de70facba7499d515f43b60ef87bc9ccd3d9d33de2f328153dd5f36b"
-      windows-ucrt64: "8986b005c510b71cf7bf71e45756460f123fc9b993e528df05555546609558dd"
+      macos-arm64: "9452007cd4a7a73df1288766b165a3cca96056b04794422c621eeb6a06944135"
+      macos-x86_64: "8cd3766355eb122680fb7532e67bcadb7c92d2d31fba24cb2babdd8be1e005fa"
+      linux-gnu-x86_64: "9618711295d785d7dfb32c00a74a40db32c0846eeaae4f18ffbaeab662e167bd"
+      linux-gnu-arm64: "4cb3a6a74bb2ae3c080465cffe8ef6a1b1d1cc064f8a600c998882f6ca044224"
+      linux-musl-x86_64: "f2059cd4e90ea7cae27831a265dac4d588a9555296cda0d542a2895432a397a3"
+      linux-musl-arm64: "162436f8c9bb7cd9fe69f5a1d40312912d72d163f71781d0c649803060563f13"
+      windows-ucrt64: "ff6e2fb9ca469bafb7752a59ae608cd734009d4a56279efad5b7d401fa071fc6"
     tfs:
-      macos-arm64: "e96419695748ed6e612104b219d1aa0750de88939233e6f5f76a6c37666cf58a"
-      macos-x86_64: "1ca230f7b657652955d773ad3fb6f618e7fdd809322ca500c4a08f1834cbe27e"
-      linux-gnu-x86_64: "10634e705fe50401ef7a989419fc134773560741cea7b585a6bf197db780a862"
-      linux-gnu-arm64: "c0b50cc27e83f9757da08d046ce2eb9c3b02b30ab3323b4601f910b6eb395c73"
-      linux-musl-x86_64: "a0af6b0a8b72d9e04af67f49e6326e30adb8241be135f159537fd7acb3d1aed6"
-      linux-musl-arm64: "b42cbb30ebbfd490b51990683603b26d6a2a362d722d220ce239ca106ad9d99a"
-      windows-ucrt64: "764bd6dbb8ef4400779f56e0e57bbf2b74c7107226ae5ad6c566a02e063c3246"
+      macos-arm64: "6848433736969237df61c896787dd22508101ec186b103b34f3d6868c4a282f6"
+      macos-x86_64: "deb4a0a06f3933fdeea95d281585b0412004959a9d9db5589f98ee76a04855f0"
+      linux-gnu-x86_64: "3d99d9429fc156962bcd848747531a9b714947e28640fd1526388cc0d1eaca40"
+      linux-gnu-arm64: "513b46e68018fc80a8cdd0476dfe03f7a81ec6fa70c044fc73bf2315e51ea604"
+      linux-musl-x86_64: "4035ea41c10debc717edd87bb822f243dac0617732d107936118609f30c91046"
+      linux-musl-arm64: "10d937e79695da29c415fd261153f87b8cdf4786959b88c4bbe104043e953496"
+      windows-ucrt64: "1552c0580669ab6c1edf48c70456156eb4177b22dfc7520d22a2f6e46f8a2b01"
     tebako-pkg:
-      macos-arm64: "7ba3bd373bcc19f6790cf8a3fada11284a6fbac4bfc82c94fd65d66ab40617d7"
-      macos-x86_64: "b64d2c5026f3b03b7ecdefbed3bce9a527ad71b1e3d9cae5c1ded4ccb1dbcf93"
-      linux-gnu-x86_64: "32897fe4369c62ed7fdb5ee635abf7dbf7b73080ea7486a67c3da3317881fcdc"
-      linux-gnu-arm64: "af68584b136d4cd4dcd95911ee71a5bb33db0365c5d91e445f13c3d50d3696a8"
-      linux-musl-x86_64: "1df32d00cd87a9f7a107643c6f6acffcf83c57f41c0235e53e0d2a5d5bebaee4"
-      linux-musl-arm64: "186dc38918a31728d45bcee1450b6f6009eabda2368dd052dd90d1472a219a47"
-      windows-ucrt64: "061bd879b7b28cd9849dfb9fcb82b72530b0724926e70c3c92f7fd5aead64702"
+      macos-arm64: "abcdd7141657793a8f5e0499902dc7b09113b82e92491e4098fb9b054d33154f"
+      macos-x86_64: "b8d64c4c08ab815a7fff6d72a5c730236729bdf674916241d5a6a71a10e12f4d"
+      linux-gnu-x86_64: "67fd3e2ef272755ae4d58f99e83b665e7d29b9dda307f6772bb893d992785148"
+      linux-gnu-arm64: "01b1af75cfd3c3e8f7db1d30f3ebb4b9c7ebb9662fe96d329866e732d5661ffe"
+      linux-musl-x86_64: "7996f713e30b3a13980d25956de94283c59536c7b1d5405f21b5cb001c10bb96"
+      linux-musl-arm64: "49f71af14d61d1922f18ac89bfbd66394f2ef9369f7fd410d0e40bc3250a40e0"
+      windows-ucrt64: "613d2c4ffe23b8defb4292a1cb8be401b3de30f115743951b9828cd0afab456b"
     tebako-shim:
-      macos-arm64: "683d51b49c72d04397f69d47689eab846665053c9a1fb80806422bb07e7081d5"
-      macos-x86_64: "671f9ab7103222de88eb10d2cbc30c15f2e012b573969f0afd8eacce29dff759"
-      linux-gnu-x86_64: "0aa108dd60a485677f4304d6c1e24c50411693e27b9cd5c9cfaf4f8059fede73"
-      linux-gnu-arm64: "a24a361622f66aa85e2385bec442e72a0feb6ca84b18fccceb2964e23d2f2de5"
-      linux-musl-x86_64: "2ec5d65b12115a0910134cb3238e6bf0aec85b9ced03be4f0f287d0cf1cfc3c7"
-      linux-musl-arm64: "d3274c8c974fced7743cdbbb8e50bd3be8c604aa18903dd3bd238e79e6472277"
-      windows-ucrt64: "fd827e688fd8c0c6becb103c0bd2996fe10344cc9d61b0c1fd412207e34ec232"
+      macos-arm64: "90cff0a64219a9e3d09b79780c0be3b85e8abac0c6a1766dddf9f6b8a4a743bf"
+      macos-x86_64: "0839ba5b4bb4b73738ce1b304219f00ce648adaf6644b29f5bf52be6b75a1ba1"
+      linux-gnu-x86_64: "88afbd4d35ad74474c64d07a5dd4f4fb951c7225efa1636b12c05f126c838949"
+      linux-gnu-arm64: "aec73db4dcec581719814e9cdc409fbdce9b1dc64d8cf3792439fa19544e049b"
+      linux-musl-x86_64: "cebd1dce4937d1a93b8d4040042c987e20c8ec9f77f2a72c2d8975b0d1a50aad"
+      linux-musl-arm64: "0a9efd19dc43632a38f6f1c28a5aa7c3c94105365642c233be2f982044e1f768"
+      windows-ucrt64: "9725a16e579a2d89282aae2a67c2bb82569fafcbb4b3fdb0e668614eca66c5b1"
 
 # Signing (spec 09 §9; the metanorma/hello pattern): the tamatebako CI
 # signing subkey signs every payload asset + the registry entry carries

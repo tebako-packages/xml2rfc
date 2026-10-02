@@ -51,6 +51,9 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+  # OCI dual-publish (spec 38): the release job's publish step pushes the
+  # payload artifacts to ghcr.io when the OCI_REPO variable is set.
+  packages: write
 
 # Every run: block is bash (set -euo pipefail). On windows-latest the
 # default shell is pwsh and every step would break — git-bash on the
@@ -401,13 +404,17 @@ jobs:
     # The owner's explicit act ONLY (the ecosystem hard rule): a dispatch
     # with publish=true on a tag ref. Push/tag/PR runs never publish.
     if: ${{ always() && !cancelled() && inputs.publish && needs.build.result == 'success' && needs.wrong-line-refusal.result == 'success' && startsWith(github.ref, 'refs/tags/') }}
-    # A job-level block REPLACES the workflow-level grant, so contents +
-    # pull-requests are restated; attestations/id-token arm the SLSA L3
+    # A job-level block REPLACES the workflow-level grant, so every grant
+    # this job needs is restated here: contents + pull-requests for the
+    # release/registry-bot flow, packages for the ghcr.io dual-publish
+    # push (dropping it revokes the token's package scope and the push
+    # dies CredentialRequired), attestations/id-token for the SLSA L3
     # provenance step at the job tail (same publish gate — a non-publish
     # run never runs this job, so it never attests).
     permissions:
       contents: write
       pull-requests: write
+      packages: write
       attestations: write
       id-token: write
     env:
@@ -472,6 +479,13 @@ jobs:
         env:
           TEBAKO_RUNTIME_MIRROR: file://${{ github.workspace }}/out/runtime-mirror
           TEBAKO_SIGNING_KEY: ${{ secrets.TEBAKO_CI_SIGNING_KEY }}
+          # OCI dual-publish destination (spec 38; repo variable — unset
+          # means dormant, the --oci flag is omitted byte-for-byte and the
+          # publish is unchanged). Activation: set OCI_REPO to
+          # tfs+oci://ghcr.io/tebako-packages/xml2rfc once the ghcr
+          # package is public + repo-attached (the v2.8.24 tools pin
+          # carries publish --oci).
+          OCI_REPO: ${{ vars.OCI_REPO }}
         run: |
           set -euo pipefail
           # The signing key staging: with a recipe-declared signing block
@@ -490,11 +504,29 @@ jobs:
           else
             echo "::notice::recipe declares no signing — publishing unsigned (unsigned is first-class; the registry carries no signature pins)"
           fi
-          # SIGN_ARGS carries --sign=<keyid> when the recipe signs; the
-          # ${arr[@]+...} guard keeps the empty (unsigned) expansion
-          # legal under set -u on bash 3.2 (macOS's /bin/bash).
+          # OCI dual-publish (spec 38 §11; dormant while OCI_REPO is unset):
+          # the SAME staged bytes ride the OCI repo, per-triplet tags derive,
+          # signatures follow as sha256-<hex>.asc sibling digest-tags, and
+          # the per-triplet registry rows gain the additive oci: mirror
+          # locator. The ghcr credential is the spec-38 §6 tier-3
+          # docker-config auths entry (plain auth — credHelpers are the
+          # named refusal), minted from this job's own GITHUB_TOKEN and
+          # confined to ghcr.io.
+          OCI_ARGS=()
+          if [ -n "${OCI_REPO:-}" ]; then
+            mkdir -p ~/.docker
+            printf '{"auths":{"ghcr.io":{"auth":"%s"}}}\n' \
+              "$(printf '%s' "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | base64 | tr -d '\n')" \
+              > ~/.docker/config.json
+            chmod 600 ~/.docker/config.json
+            OCI_ARGS=(--oci "$OCI_REPO")
+          fi
+          # SIGN_ARGS carries --sign=<keyid> when the recipe signs;
+          # OCI_ARGS carries --oci <repo> when the variable activates the
+          # dual-publish; the ${arr[@]+...} guards keep both empty
+          # expansions legal under set -u on bash 3.2 (macOS's /bin/bash).
           # shellcheck disable=SC2046  # --payload-args MUST word-split into the per-triplet --payload pairs
-          "$TEBAKO_CLI" publish "${SIGN_ARGS[@]+"${SIGN_ARGS[@]}"}" --name "$PKG_NAME" \
+          "$TEBAKO_CLI" publish "${SIGN_ARGS[@]+"${SIGN_ARGS[@]}"}" "${OCI_ARGS[@]+"${OCI_ARGS[@]}"}" --name "$PKG_NAME" \
             --release "tfs:github:tebako-packages/xml2rfc:${{ github.ref_name }}" \
             $(ruby tools/pins.rb --payload-args) \
             --registry-out "$PWD/tpkg-registry.yaml"
