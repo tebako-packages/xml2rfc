@@ -97,7 +97,7 @@ ci:
     x86_64-linux-musl: "ubuntu-22.04"
     aarch64-linux-musl: "ubuntu-22.04-arm"
     x86_64-macos: "macos-15-intel"
-    aarch64-macos: "macos-14"
+    aarch64-macos: "macos-15"
     x86_64-windows-ucrt: "windows-latest"
   # Pinned BY DIGEST (tebako-ci-containers README: consumers pin by
   # digest; the v1 tag is the baked alpine 3.21 provisioning). Only the
