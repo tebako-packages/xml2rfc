@@ -109,43 +109,43 @@ ci:
 
 tools:
   repo: "tamatebako/tebako"
-  release: "v2.8.76"          # v2.8.24 ships spec 38's publish --oci (the
+  release: "v2.8.83"          # v2.8.24 ships spec 38's publish --oci (the
                              # dual-publish leg the OCI_REPO variable arms);
                              # every pin below is verified against the
                              # release's own SHA256SUMS.
   sha256:
     tebako:
-      macos-arm64: "20740ef56c8725e7fc85f1cc45fd99f454760c4e2bd712f1dd4629640d046b50"
-      macos-x86_64: "d354609b9ccca905bd21f3891938d06efe6fb26bc3d07ef300b3590d983a48ba"
-      linux-gnu-x86_64: "c8ac50d3ac7a2103c8b0bb60ba7631cde0b2273a01c8db8c77bbe610eed2fd1e"
-      linux-gnu-arm64: "cd6a384572db3befae4349a06db7ff683de1b984c1bae990366bfdc6a1fb4a4d"
-      linux-musl-x86_64: "52b9cddfbfaa40fe14272147be8678415640c01bed46d5fa84498f214b2f6555"
-      linux-musl-arm64: "c737998a45c4b01ad2e4271db30b68ecddd252d69c1184b1d198c87fd71f1c33"
-      windows-ucrt64: "5f5dd3ccaeb3745f35928663c3051b109c98bc255a049caa06756e461f91e9fe"
+      macos-arm64: "c49c57d0cebbe9a547b4e1f30782b68123560d011190e9207c4db0c57b215fb9"
+      macos-x86_64: "2719242b77a1a1add718b92265eaeada2e6ca2d157f2c3c2725c8047e70105a6"
+      linux-gnu-x86_64: "6c046d0207895566acf02d2cf3990e4f0a3a82f2ea3961473b476c99a72fa932"
+      linux-gnu-arm64: "9cd4537470a0b81882f932c0a9c7916c3fb4c9ca8d4151e466e7fdce8219fff9"
+      linux-musl-x86_64: "117f6d303bf20d8cd6cdc1886546b7907535aada14044a32945f03cd487d0d5c"
+      linux-musl-arm64: "64300c82aee7847fb32b2f3f7cc815cf0fb32b3cefffd9b94a6bc98e01a8783d"
+      windows-ucrt64: "5b2ba381a59c0efbb97c69c864a26cae6736e7fd902f10f7ec49153ec039055b"
     tfs:
-      macos-arm64: "ed0fbc63ae3b352be06bc92088b827c15ac701be23dad29b0d63588d0babc5a2"
-      macos-x86_64: "fadcd0aa96e04123245cbab672ca876440292f194030a1c8254b3b77de518a4f"
-      linux-gnu-x86_64: "6712f110f332236c49acfa0c21899860f5c1c8b8859fa7b8e4158e45a96479fb"
-      linux-gnu-arm64: "b56d417f12d82f346b8000307b46dc33a2ccc7036baf1d57b37d01b5905d2a25"
-      linux-musl-x86_64: "93a5a329e6e236f33ca4aa7bad6dba3920c21e4bd3ec06ee94ca25218cc45cc0"
-      linux-musl-arm64: "3309aec4389ed97ee0025b3f625471cb00697660ed70f5646fe6b14e88e1a574"
-      windows-ucrt64: "0f522a26e4df880ef4171ebbf42b70eff64b35f3d95fb33ca1d574b0654bdf3f"
+      macos-arm64: "a8c5481736801f72cd9c3da648ec208601187ac4335e19086bb5ea28c203feed"
+      macos-x86_64: "5003bd83fe93a5e707bbb519ee78ec01008f44a2e0d5ba32cbc59a349f03e8e8"
+      linux-gnu-x86_64: "126777314d562d74b8ff7aacc33256dc2fa0e248e7b6d914eac29679ddd728b2"
+      linux-gnu-arm64: "41472b8b936eb6c482bec4b595e8b80c21c6499492cf8d4128c980f362a4450c"
+      linux-musl-x86_64: "e0415f5b0186cb5c0030ec2a05559ff18a3bf00ad581fd6bab9531d8f2d4f272"
+      linux-musl-arm64: "da44712e6869734f5b562217877624310943b967b142912b077de576e242bfa6"
+      windows-ucrt64: "a965052e5ccc6e9589b17b4004d3b645650fb08cd16e34bf9b0651d882d24fdf"
     tebako-pkg:
-      macos-arm64: "ed0fbc63ae3b352be06bc92088b827c15ac701be23dad29b0d63588d0babc5a2"
-      macos-x86_64: "fadcd0aa96e04123245cbab672ca876440292f194030a1c8254b3b77de518a4f"
-      linux-gnu-x86_64: "6712f110f332236c49acfa0c21899860f5c1c8b8859fa7b8e4158e45a96479fb"
-      linux-gnu-arm64: "b56d417f12d82f346b8000307b46dc33a2ccc7036baf1d57b37d01b5905d2a25"
-      linux-musl-x86_64: "93a5a329e6e236f33ca4aa7bad6dba3920c21e4bd3ec06ee94ca25218cc45cc0"
-      linux-musl-arm64: "3309aec4389ed97ee0025b3f625471cb00697660ed70f5646fe6b14e88e1a574"
-      windows-ucrt64: "0f522a26e4df880ef4171ebbf42b70eff64b35f3d95fb33ca1d574b0654bdf3f"
+      macos-arm64: "a8c5481736801f72cd9c3da648ec208601187ac4335e19086bb5ea28c203feed"
+      macos-x86_64: "5003bd83fe93a5e707bbb519ee78ec01008f44a2e0d5ba32cbc59a349f03e8e8"
+      linux-gnu-x86_64: "126777314d562d74b8ff7aacc33256dc2fa0e248e7b6d914eac29679ddd728b2"
+      linux-gnu-arm64: "41472b8b936eb6c482bec4b595e8b80c21c6499492cf8d4128c980f362a4450c"
+      linux-musl-x86_64: "e0415f5b0186cb5c0030ec2a05559ff18a3bf00ad581fd6bab9531d8f2d4f272"
+      linux-musl-arm64: "da44712e6869734f5b562217877624310943b967b142912b077de576e242bfa6"
+      windows-ucrt64: "a965052e5ccc6e9589b17b4004d3b645650fb08cd16e34bf9b0651d882d24fdf"
     tebako-shim:
-      macos-arm64: "3d0708dba0e0f606668f4103830ca23fd1dd4aa6300d836281475fb9e11d6593"
-      macos-x86_64: "527a517f7c6613d96ed0f4fcdb3f32fc172f0e41d5ba3b537853bcbd00c87d40"
-      linux-gnu-x86_64: "33bd5dfeaa5131b192bcf202afc2a84b1da5fcced90cb5627e464776c3697cec"
-      linux-gnu-arm64: "5ee14155d48655a742f31c519f00a101a030be2c8e37998333af88a01fda9728"
-      linux-musl-x86_64: "cfe725fdf4124713d7a0242780269c52868c7c1ec0e76ebd8ff9779cdb375b16"
-      linux-musl-arm64: "0a6cf83ce6ddf662d1ca8e4afe81944a2454486580d76c7ae27797887731d352"
-      windows-ucrt64: "236013a50d629e3450dde9de5ecfeb6a0fb1f0bf7d58154b9bd1b15cb5839427"
+      macos-arm64: "5218004513366aefe6ee85c6630f93f6e52bfb763d8af7b5dba45d402a9b86d3"
+      macos-x86_64: "8845bd7b2add5102f23d160e0e57165cea174bb9527871d0cfd0d0af8ff6103e"
+      linux-gnu-x86_64: "d7666ada6951f434d912e035bd91a2dcde583cc7a66b2a53159161c2c8310186"
+      linux-gnu-arm64: "4cc71c6bb87c914c86f14398fa375e34a59c95bc021a89e736ed1eeb3a5e7ec2"
+      linux-musl-x86_64: "2e85d0b693335447e19339cac36fb061a29f7a060df5c2ff741272686fa5ad9d"
+      linux-musl-arm64: "44ea01b55d499dd679c354106c4a7fd1f269c538467533c05d48fbf67b111370"
+      windows-ucrt64: "ac902e2679f908bf82d5205abca216416ee59815cea3c891658a50eba1d8c393"
 
 # Signing (spec 09 §9; the metanorma/hello pattern): the tamatebako CI
 # signing subkey signs every payload asset + the registry entry carries
